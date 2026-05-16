@@ -14,7 +14,22 @@ import 'theme/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+
+  // Force light status-bar / nav-bar icons against the ink canvas. Setting
+  // both `statusBarBrightness` (iOS) and `statusBarIconBrightness`
+  // (Android) here, plus transparent system nav-bar so we render under it
+  // edge-to-edge.
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarBrightness: Brightness.dark, // iOS — content behind is dark
+    statusBarIconBrightness: Brightness.light, // Android — light glyphs
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarDividerColor: Colors.transparent,
+  ));
+
+  // Edge-to-edge so our custom tab bar sits flush against the gesture bar.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // Load the on-device food canon and the persisted app state in parallel.
   await FoodCanon.instance.load();
@@ -37,6 +52,11 @@ class VoCalApp extends StatelessWidget {
       title: 'VoCal',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
+      // Force dark — iOS uses `.preferredColorScheme(.dark)`. Android Material
+      // would otherwise honor the system setting and surface light-mode
+      // tweaks (e.g. textfield ripples) underneath our overrides.
+      themeMode: ThemeMode.dark,
+      darkTheme: buildAppTheme(),
       home: const RootView(),
     );
   }

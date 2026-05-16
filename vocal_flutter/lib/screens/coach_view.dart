@@ -110,7 +110,7 @@ class _CoachViewState extends State<CoachView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
+          padding: const EdgeInsets.fromLTRB(28, 18, 28, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -142,7 +142,7 @@ class _CoachViewState extends State<CoachView> {
         Expanded(
           child: ListView(
             controller: _scroll,
-            padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+            padding: const EdgeInsets.fromLTRB(28, 14, 28, 18),
             children: [
               Row(
                 children: [
@@ -176,7 +176,7 @@ class _CoachViewState extends State<CoachView> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+          padding: const EdgeInsets.fromLTRB(28, 0, 28, 16),
           child: Row(
             children: [
               Expanded(
@@ -205,31 +205,36 @@ class _CoachViewState extends State<CoachView> {
                 ),
               ),
               const SizedBox(width: 10),
-              GestureDetector(
-                onTap: _send,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _controller.text.isEmpty
-                        ? Palette.pulse
-                        : Palette.voltage,
-                    boxShadow: [
-                      BoxShadow(
-                          color: (_controller.text.isEmpty
-                                  ? Palette.pulse
-                                  : Palette.voltage)
-                              .withOpacity(0.4),
-                          blurRadius: 12),
-                    ],
+              // Disable the send affordance when there's no message — empty
+              // taps used to silently no-op and looked like a dead button.
+              Opacity(
+                opacity: _controller.text.trim().isEmpty ? 0.55 : 1.0,
+                child: GestureDetector(
+                  onTap: _controller.text.trim().isEmpty ? null : _send,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _controller.text.trim().isEmpty
+                          ? Palette.pulse
+                          : Palette.voltage,
+                      boxShadow: [
+                        BoxShadow(
+                            color: (_controller.text.trim().isEmpty
+                                    ? Palette.pulse
+                                    : Palette.voltage)
+                                .withOpacity(0.4),
+                            blurRadius: 12),
+                      ],
+                    ),
+                    child: Icon(
+                        _controller.text.trim().isEmpty
+                            ? Icons.mic
+                            : Icons.arrow_upward,
+                        size: 16,
+                        color: Palette.ink),
                   ),
-                  child: Icon(
-                      _controller.text.isEmpty
-                          ? Icons.mic
-                          : Icons.arrow_upward,
-                      size: 16,
-                      color: Palette.ink),
                 ),
               ),
             ],

@@ -47,6 +47,7 @@ class _BodyFatPhotoSheetState extends State<BodyFatPhotoSheet> {
     final x = await _picker.pickImage(
         source: ImageSource.camera, imageQuality: 85);
     if (x == null) return;
+    if (!mounted) return; // sheet may have been dragged away
     setState(() {
       if (slot == _Step.front) {
         _front = File(x.path);
@@ -58,6 +59,7 @@ class _BodyFatPhotoSheetState extends State<BodyFatPhotoSheet> {
   }
 
   void _advance() {
+    if (!mounted) return;
     switch (_step) {
       case _Step.intro:
         setState(() => _step = _front == null ? _Step.front : _Step.side);
@@ -137,9 +139,13 @@ class _BodyFatPhotoSheetState extends State<BodyFatPhotoSheet> {
   Widget build(BuildContext context) {
     return Container(
       color: Palette.ink,
+      // Keyboard avoidance — sheet should bump up if a 3rd-party Android
+      // IME ever overlays (not used by this sheet today but cheap insurance).
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+          padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

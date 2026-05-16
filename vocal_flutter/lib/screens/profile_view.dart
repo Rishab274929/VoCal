@@ -33,7 +33,9 @@ class ProfileView extends StatelessWidget {
     final isPro = p.entitlement == Entitlement.pro;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+      // iOS uses 28 horizontal everywhere — match it. Bottom is 24 (tab bar
+      // is in-flow so we don't need extra clearance for an overhang).
+      padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

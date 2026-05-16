@@ -38,7 +38,8 @@ class ProgressScreen extends StatelessWidget {
     final dBf = curBf - firstBf;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 80),
+      // iOS spacing parity: 28 horizontal, 24 bottom (no tab-bar overhang).
+      padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

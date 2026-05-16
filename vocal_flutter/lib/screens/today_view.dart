@@ -1,6 +1,7 @@
 // Editorial daily dashboard — Flutter port of TodayView.swift.
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_model.dart';
@@ -32,9 +33,16 @@ class TodayView extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppModel>();
     final t = app.totals;
+    // Match iOS: format with thousands separators so 1880 reads as 1,880
+    // and the headline fits on two lines instead of three on a Pixel 9.
+    final kcalFmt = NumberFormat.decimalPattern();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 80),
+      // iOS bumped horizontal padding 24→28 (commit 79bf629) to keep
+      // tracked eyebrows + italic wordmark from clipping the left edge.
+      // Bottom 18 — the tab bar is now in-flow, no need for the old 80
+      // overhang gutter.
+      padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -63,9 +71,10 @@ class TodayView extends StatelessWidget {
           const SizedBox(height: Spacing.lg),
 
           // hero
-          Eyebrow(_greeting(
-                  app.profile.displayName.isEmpty ? 'there' : app.profile.displayName)
-              .toUpperCase()),
+          // Eyebrow widget already uppercases — don't double-call .toUpperCase
+          Eyebrow(_greeting(app.profile.displayName.isEmpty
+              ? 'there'
+              : app.profile.displayName)),
           const SizedBox(height: 14),
           Text.rich(
             TextSpan(children: [
@@ -74,13 +83,14 @@ class TodayView extends StatelessWidget {
                   style: AppType.serif(36,
                       weight: FontWeight.w500, color: Palette.smoke)),
               TextSpan(
-                  text: '${t.calorieRemaining} kcal',
+                  text: '${kcalFmt.format(t.calorieRemaining)} kcal',
                   style: AppType.serif(36,
                       weight: FontWeight.w500,
                       italic: true,
                       color: Palette.voltage)),
+              // Match iOS exactly: " left today." (not "left in the day.")
               TextSpan(
-                  text: ' left in the day.',
+                  text: ' left today.',
                   style: AppType.serif(36,
                       weight: FontWeight.w500, color: Palette.ash)),
             ]),
@@ -105,8 +115,9 @@ class TodayView extends StatelessWidget {
                       _hr(),
                       _statColumn('GOAL', t.calorieGoal, Palette.ash),
                       _hr(),
+                      // Match iOS: column label is REMAINING, not DEFICIT
                       _statColumn(
-                          'DEFICIT',
+                          'REMAINING',
                           (t.calorieGoal - t.caloriesEaten) < 0
                               ? 0
                               : t.calorieGoal - t.caloriesEaten,

@@ -52,11 +52,13 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
   Future<void> _pick(ImageSource source) async {
     final x = await _picker.pickImage(source: source, imageQuality: 85);
     if (x == null) return;
+    if (!mounted) return;
     setState(() => _image = File(x.path));
     await _runFirstPass();
   }
 
   Future<void> _runFirstPass() async {
+    if (!mounted) return;
     setState(() => _parsing = true);
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
@@ -125,7 +127,7 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
           bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+          padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

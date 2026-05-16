@@ -151,20 +151,65 @@ class Eyebrow extends StatelessWidget {
 }
 
 ThemeData buildAppTheme() {
+  // Material is intentionally suppressed everywhere we own UI — no ripples,
+  // no glow splashes, no AppBar tints, no hover overlays. The editorial
+  // design language renders its own state hits via Container/Border swaps.
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
     scaffoldBackgroundColor: Palette.ink,
+    canvasColor: Palette.ink,
     colorScheme: const ColorScheme.dark(
       surface: Palette.ink,
+      onSurface: Palette.bone,
       primary: Palette.voltage,
+      onPrimary: Palette.ink,
       secondary: Palette.pulse,
+      onSecondary: Palette.bone,
+      error: Palette.pulse,
     ),
     textTheme: ThemeData.dark().textTheme.apply(
           bodyColor: Palette.bone,
           displayColor: Palette.bone,
+          decorationColor: Palette.bone,
         ),
     splashColor: Colors.transparent,
     highlightColor: Colors.transparent,
+    hoverColor: Colors.transparent,
+    focusColor: Colors.transparent,
+    dividerColor: Palette.hairline,
+    // Bottom sheets ride on Palette.ink, not Material's default surface
+    // tint that bleeds purple over our dark canvas.
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Palette.ink,
+      surfaceTintColor: Colors.transparent,
+      modalBackgroundColor: Palette.ink,
+      modalBarrierColor: Colors.black54,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+    ),
+    // We don't use AppBars but if one slips in (e.g. via a 3p plugin) make
+    // sure it doesn't render a Material teal-ish tint.
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Palette.ink,
+      foregroundColor: Palette.bone,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+    ),
+    // Suppress Material 3's TextField active outline + label color drift.
+    inputDecorationTheme: InputDecorationTheme(
+      filled: false,
+      hintStyle: TextStyle(color: Palette.smoke),
+      labelStyle: const TextStyle(color: Palette.ash),
+      focusColor: Palette.voltage,
+    ),
+    // Disable Material's "page transition" cross-fade on Android since our
+    // shell is in a single Scaffold + custom tab swaps.
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    }),
   );
 }

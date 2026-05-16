@@ -109,8 +109,10 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
   Future<void> _parse({String? followUp}) async {
     if (_recorder.isRecording) {
       final f = await _recorder.finish();
+      if (!mounted) return;
       if (f.isNotEmpty) _transcript.text = f;
     }
+    if (!mounted) return;
     setState(() {
       _error = null;
       _phase = _Phase.parsing;
@@ -225,7 +227,7 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
           bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+          padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

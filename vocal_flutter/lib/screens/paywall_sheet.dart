@@ -13,15 +13,24 @@ Future<void> showPaywallSheet(
   VoidCallback? onSubscribe,
   VoidCallback? onSkip,
 }) {
+  // When opened from onboarding (onSkip provided) this is a hard gate — no
+  // tap-outside dismissal, no drag-to-dismiss, no Android back button.
+  // The user must hit Subscribe or "Maybe later" explicitly.
+  final isHardGate = onSubscribe != null || onSkip != null;
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    isDismissible: onSkip == null,
+    isDismissible: !isHardGate,
+    enableDrag: !isHardGate,
+    useSafeArea: true,
     backgroundColor: Palette.ink,
     barrierColor: Colors.black.withOpacity(0.6),
-    builder: (_) => FractionallySizedBox(
-      heightFactor: 0.95,
-      child: PaywallSheet(onSubscribe: onSubscribe, onSkip: onSkip),
+    builder: (_) => PopScope(
+      canPop: !isHardGate,
+      child: FractionallySizedBox(
+        heightFactor: 0.95,
+        child: PaywallSheet(onSubscribe: onSubscribe, onSkip: onSkip),
+      ),
     ),
   );
 }
@@ -48,7 +57,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
                 child: Row(
                   children: [
                     const VoCalWordmark(),
@@ -67,7 +76,10 @@ class _PaywallSheetState extends State<PaywallSheet> {
                               color: Palette.ink)),
                     ),
                     const Spacer(),
-                    if (widget.onSkip == null)
+                    // Show close button only when this is NOT a hard gate
+                    // (no onSubscribe + no onSkip = opened from Profile or
+                    // similar voluntary path).
+                    if (widget.onSubscribe == null && widget.onSkip == null)
                       GestureDetector(
                         onTap: () => Navigator.of(context).maybePop(),
                         child: Container(
@@ -86,7 +98,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+                  padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -159,7 +171,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
                 child: Column(
                   children: [
                     VoltageButton(
@@ -168,9 +180,16 @@ class _PaywallSheetState extends State<PaywallSheet> {
                           : 'Subscribe — \$4.99/mo',
                       icon: Icons.lock_open,
                       onTap: () {
-                        context.read<AppModel>().upgradeToPro();
+                        // Delegate to the caller's handler if provided —
+                        // onboarding's onSubscribe already calls
+                        // upgradeToPro + finish, so calling it here too
+                        // would double-fire. Only run the local upgrade
+                        // when there's no external subscribe handler
+                        // (e.g. paywall opened from Profile).
                         if (widget.onSubscribe != null) {
                           widget.onSubscribe!();
+                        } else {
+                          context.read<AppModel>().upgradeToPro();
                         }
                         Navigator.of(context).maybePop();
                       },
@@ -188,8 +207,12 @@ class _PaywallSheetState extends State<PaywallSheet> {
                                   color: Palette.smoke)),
                           GestureDetector(
                             onTap: () {
-                              widget.onSkip!();
+                              // Pop FIRST then notify caller so the parent
+                              // (onboarding) doesn't try to push another
+                              // sheet while this one is still animating
+                              // away — caused a brief frozen-overlay race.
                               Navigator.of(context).maybePop();
+                              widget.onSkip!();
                             },
                             child: Text('Maybe later',
                                 style: AppType.body(12,

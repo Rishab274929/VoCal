@@ -73,7 +73,10 @@ class CalorieRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = (eaten / (goal <= 0 ? 1 : goal)).clamp(0.0, 1.0);
-    final remaining = (goal - eaten) < 0 ? 0 : goal - eaten;
+    final over = goal > 0 && eaten > goal;
+    final delta = eaten - goal;
+    final remaining = over ? delta : (goal - eaten);
+    final tint = over ? Palette.pulse : Palette.voltage;
 
     return SizedBox(
       width: size,
@@ -87,21 +90,22 @@ class CalorieRing extends StatelessWidget {
             curve: Curves.easeOut,
             builder: (_, p, __) => CustomPaint(
               size: Size(size, size),
-              painter: _RingPainter(p),
+              painter: _RingPainter(progress: p, tint: tint),
             ),
           ),
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('$remaining',
-                  style: AppType.serif(size * 0.32, weight: FontWeight.w500)),
+                  style: AppType.serif(size * 0.32,
+                      weight: FontWeight.w500, color: Palette.bone)),
               const SizedBox(height: 6),
-              Text('KCAL LEFT',
+              Text(over ? 'KCAL OVER' : 'KCAL LEFT',
                   style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 2.4,
-                      color: Palette.smoke)),
+                      color: over ? Palette.pulse : Palette.smoke)),
               const SizedBox(height: 8),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -127,7 +131,8 @@ class CalorieRing extends StatelessWidget {
 
 class _RingPainter extends CustomPainter {
   final double progress;
-  _RingPainter(this.progress);
+  final Color tint;
+  _RingPainter({required this.progress, required this.tint});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -164,9 +169,9 @@ class _RingPainter extends CustomPainter {
       endAngle: 2 * math.pi,
       transform: const GradientRotation(-math.pi / 2),
       colors: [
-        Palette.voltage.withOpacity(0.6),
-        Palette.voltage,
-        Palette.voltage,
+        tint.withOpacity(0.6),
+        tint,
+        tint,
       ],
     ).createShader(rect);
 
@@ -180,7 +185,7 @@ class _RingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 10
         ..strokeCap = StrokeCap.round
-        ..color = Palette.voltage.withOpacity(0.45)
+        ..color = tint.withOpacity(0.45)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
     // Main stroke
@@ -198,7 +203,8 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) => old.progress != progress;
+  bool shouldRepaint(_RingPainter old) =>
+      old.progress != progress || old.tint != tint;
 }
 
 // MARK: - Macro bar
@@ -453,10 +459,16 @@ class MealCard extends StatelessWidget {
 }
 
 // MARK: - Mic button
+//
+// iOS commit 7e2e04a inlined this button into the tab bar (size 52 from a
+// floating 78). The old floating FAB extended the perceived bar height by
+// ~30pt and overhung into content above. Sized + shadow tuned to live inside
+// an HStack slot, not float.
 
 class MicButton extends StatefulWidget {
   final VoidCallback onTap;
-  const MicButton({super.key, required this.onTap});
+  final double size;
+  const MicButton({super.key, required this.onTap, this.size = 52});
 
   @override
   State<MicButton> createState() => _MicButtonState();
@@ -480,59 +492,64 @@ class _MicButtonState extends State<MicButton>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: SizedBox(
-        width: 78,
-        height: 78,
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_pulse, _rot]),
-          builder: (_, __) {
-            final p = _pulse.value;
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                Transform.scale(
-                  scale: 1 + 0.85 * p,
-                  child: Opacity(
-                    opacity: (1 - p).clamp(0.0, 1.0),
-                    child: Container(
-                      width: 78,
-                      height: 78,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: Palette.pulse.withOpacity(0.55),
-                            width: 1.5),
+    final s = widget.size;
+    return Semantics(
+      label: 'Log a meal with your voice',
+      button: true,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: SizedBox(
+          width: s,
+          height: s,
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_pulse, _rot]),
+            builder: (_, __) {
+              final p = _pulse.value;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.scale(
+                    scale: 1 + 0.7 * p,
+                    child: Opacity(
+                      opacity: (1 - p).clamp(0.0, 1.0),
+                      child: Container(
+                        width: s,
+                        height: s,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Palette.pulse.withOpacity(0.55),
+                              width: 1.5),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                Container(
-                  width: 78,
-                  height: 78,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Palette.ink,
-                    border: Border.all(color: Palette.pulse, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Palette.pulse.withOpacity(0.5),
-                          blurRadius: 24),
-                    ],
+                  Container(
+                    width: s,
+                    height: s,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Palette.ink,
+                      border: Border.all(color: Palette.pulse, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Palette.pulse.withOpacity(0.4),
+                            blurRadius: 14),
+                      ],
+                    ),
                   ),
-                ),
-                Transform.rotate(
-                  angle: _rot.value * 2 * math.pi,
-                  child: CustomPaint(
-                    size: const Size(78, 78),
-                    painter: _TickPainter(),
+                  Transform.rotate(
+                    angle: _rot.value * 2 * math.pi,
+                    child: CustomPaint(
+                      size: Size(s, s),
+                      painter: _TickPainter(s),
+                    ),
                   ),
-                ),
-                const Icon(Icons.mic, size: 22, color: Palette.bone),
-              ],
-            );
-          },
+                  Icon(Icons.mic, size: s * 0.32, color: Palette.bone),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -540,24 +557,27 @@ class _MicButtonState extends State<MicButton>
 }
 
 class _TickPainter extends CustomPainter {
+  final double size;
+  _TickPainter(this.size);
+
   @override
-  void paint(Canvas canvas, Size size) {
-    final c = Offset(size.width / 2, size.height / 2);
+  void paint(Canvas canvas, Size canvasSize) {
+    final c = Offset(canvasSize.width / 2, canvasSize.height / 2);
+    final r = size * 0.42;
     for (var i = 0; i < 24; i++) {
       final major = i % 3 == 0;
       final paint = Paint()
         ..color = Palette.pulse.withOpacity(major ? 0.9 : 0.25)
         ..strokeWidth = 1;
       final angle = i / 24 * 2 * math.pi;
-      final len = major ? 6.0 : 3.0;
-      const r = 32.0;
+      final len = major ? size * 0.10 : size * 0.05;
       final dir = Offset(math.sin(angle), -math.cos(angle));
       canvas.drawLine(c + dir * (r - len), c + dir * r, paint);
     }
   }
 
   @override
-  bool shouldRepaint(_) => false;
+  bool shouldRepaint(_TickPainter old) => old.size != size;
 }
 
 // MARK: - Waveform orb
@@ -1141,37 +1161,33 @@ class EditorialTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // iOS commit 7e2e04a inlined the mic into the center slot — no floating
+    // overhang, no extra perceived height. Mirror that here.
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    return SizedBox(
-      height: 64 + bottomPad + 30,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
+    return Container(
+      decoration: BoxDecoration(
+        color: Palette.ink,
+        border:
+            Border(top: BorderSide(color: Palette.hairline, width: 1)),
+      ),
+      padding: EdgeInsets.only(top: 8, bottom: bottomPad),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 30,
-            bottom: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Palette.ink.withOpacity(0.96),
-                border: Border(
-                    top: BorderSide(color: Palette.hairline, width: 1)),
-              ),
-              padding: EdgeInsets.only(top: 14, bottom: 6 + bottomPad),
-              child: Row(
-                children: [
-                  _tab(AppTab.today),
-                  _tab(AppTab.progress),
-                  const SizedBox(width: 86),
-                  _tab(AppTab.coach),
-                  _tab(AppTab.profile),
-                ],
-              ),
+          _tab(AppTab.today),
+          _tab(AppTab.progress),
+          // Mic sits INLINE in the center slot. Width matches iOS (86) and
+          // a small negative top padding keeps the larger circle visually
+          // centered with the smaller tab icons.
+          SizedBox(
+            width: 86,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: MicButton(onTap: onMic, size: 52),
             ),
           ),
-          Positioned(top: 0, child: MicButton(onTap: onMic)),
+          _tab(AppTab.coach),
+          _tab(AppTab.profile),
         ],
       ),
     );
@@ -1183,21 +1199,23 @@ class EditorialTabBar extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => onSelect(tab),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(tab.icon,
-                size: 18,
-                color: active ? Palette.voltage : Palette.smoke),
-            const SizedBox(height: 4),
-            Text(tab.label.toUpperCase(),
-                style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                    color: active ? Palette.voltage : Palette.smoke)),
-            const SizedBox(height: 8),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(tab.icon,
+                  size: 17,
+                  color: active ? Palette.voltage : Palette.smoke),
+              const SizedBox(height: 3),
+              Text(tab.label.toUpperCase(),
+                  style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                      color: active ? Palette.voltage : Palette.smoke)),
+            ],
+          ),
         ),
       ),
     );

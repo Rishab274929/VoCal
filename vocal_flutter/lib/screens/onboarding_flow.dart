@@ -2,6 +2,7 @@
 // Five steps: pitch → name → body basics → goal → ready → paywall.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_model.dart';
@@ -21,6 +22,8 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   _Step _step = _Step.pitch;
   final _name = TextEditingController();
+  // Sex tokens mirror iOS: "m", "f", "" (unspecified). Sending "x" would
+  // not round-trip with UserProfile.sex semantics consumed elsewhere.
   String _sex = 'm';
   int _heightFeet = 5;
   int _heightInches = 10;
@@ -86,6 +89,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Palette.ink,
+      // Let the body resize when the keyboard appears so name/goal inputs
+      // stay visible.
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           const Positioned.fill(child: AmbientBackground()),
@@ -94,7 +100,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                  padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
                   child: Row(
                     children: [
                       for (final s in _Step.values) ...[
@@ -119,12 +125,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+                    padding: EdgeInsets.fromLTRB(
+                        28,
+                        24,
+                        28,
+                        24 + MediaQuery.of(context).viewInsets.bottom),
                     child: _content(),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
                   child: Row(
                     children: [
                       if (_step != _Step.pitch) ...[
@@ -230,8 +240,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         const SizedBox(height: 24),
         TextField(
           controller: _name,
+          autofocus: true,
           onChanged: (_) => setState(() {}),
           textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          inputFormatters: [
+            // Names are short — guard against runaway paste / cursor stuck
+            // bugs from voice input.
+            LengthLimitingTextInputFormatter(40),
+          ],
+          onSubmitted: (_) {
+            if (_canAdvance) _advance();
+          },
           style: AppType.serif(24),
           cursorColor: Palette.voltage,
           decoration: InputDecoration(
@@ -296,10 +317,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           'Sex',
           Row(
             children: [
+              // Tokens MUST mirror iOS: empty string = "Prefer not".
+              // BodyFat heuristic + UserProfile JSON checks for "" not "x".
               for (final o in const [
                 ('m', 'Male'),
                 ('f', 'Female'),
-                ('x', 'Prefer not')
+                ('', 'Prefer not')
               ]) ...[
                 Expanded(
                   child: GestureDetector(
@@ -365,6 +388,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Widget _goalView() {
+    String fmt(int v) {
+      final s = v.toString();
+      // Tiny thousands-grouping without pulling intl into onboarding.
+      final buf = StringBuffer();
+      for (var i = 0; i < s.length; i++) {
+        if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+        buf.write(s[i]);
+      }
+      return buf.toString();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -377,7 +411,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text('${_goalKcal.toInt()}',
+            Text(fmt(_goalKcal.toInt()),
                 style: AppType.serif(88,
                     weight: FontWeight.w500, color: Palette.voltage)),
             const SizedBox(width: 8),
