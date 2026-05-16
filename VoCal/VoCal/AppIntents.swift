@@ -29,6 +29,28 @@ struct LogMealByVoiceIntent: AppIntent {
     var spokenText: String
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        // Entitlement gate: Siri-driven logging is a Pro feature. Free users
+        // get a clear nudge instead of a silently-failed log.
+        //
+        // Why read from UserDefaults: AppIntents are loaded by the system
+        // (Siri / Spotlight / Shortcuts host process), not always by the
+        // app — we can't reach into a live `AppModel.shared`. The
+        // StoreKitStore writes the canonical entitlement to UserDefaults
+        // under `vocal.hasPro` (StoreKitStore.entitlementCacheKey) on every
+        // verification, so reading it here matches what the in-app UI sees.
+        //
+        // False positives (Pro user reads as free): extremely rare — only
+        // possible right after a fresh install with an existing Apple ID
+        // before bootstrap drains the unfinished transactions. The user
+        // sees this nudge once and opening the app resolves it.
+        // False negatives (free user reads as pro): impossible — we
+        // bootstrap to false on a brand-new install.
+        let hasPro = UserDefaults.standard.bool(forKey: StoreKitStore.entitlementCacheKey)
+        guard hasPro else {
+            let dialog: IntentDialog = "VoCal Pro is required to log meals with Siri. Open the app to subscribe."
+            return .result(dialog: dialog)
+        }
+
         // Trim + validate. Siri occasionally hands us empty strings if the
         // user cancels the parameter prompt — bail with a friendly retry
         // instead of POSTing "" to the parser.

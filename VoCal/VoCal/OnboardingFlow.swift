@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AuthenticationServices
 
 struct OnboardingFlow: View {
     @EnvironmentObject private var appModel: AppModel
@@ -59,12 +60,26 @@ struct OnboardingFlow: View {
                     .padding(.top, 8)
             }
         }
+        // NOTE — "Maybe later" is intentionally GONE from the onboarding
+        // paywall. Per the product spec (and recent commit f49d351), the
+        // post-onboarding paywall is now a HARD paywall: users must subscribe
+        // (or restore an existing subscription) to reach the home screen.
+        //
+        // Mechanics: passing `nil` for `onSkip` causes PaywallSheet to:
+        //   1. hide the X close button
+        //   2. disable swipe-down dismissal via `.interactiveDismissDisabled`
+        //   3. omit the "Maybe later" link in the footer
+        // So removing the callback closes the bypass cleanly — no additional
+        // changes needed in PaywallSheet itself.
+        //
+        // The free-tier user still has an escape hatch: ContentView gates
+        // EVERY render behind the same hard paywall when entitlement is
+        // .free, so even if the user somehow swiped past this sheet (e.g.
+        // via a future iOS dismiss-gesture change), the next paint would
+        // re-present the paywall.
         .sheet(isPresented: $showingPaywall) {
             PaywallSheet(onSubscribe: {
                 appModel.upgradeToPro()
-                showingPaywall = false
-                finish()
-            }, onSkip: {
                 showingPaywall = false
                 finish()
             })
@@ -116,16 +131,84 @@ struct OnboardingFlow: View {
             }
             .padding(.top, 22)
 
-            googleSignInRow
+            appleSignInRow
                 .padding(.top, 12)
+
+            googleSignInRow
+                .padding(.top, 4)
         }
     }
 
-    /// Sign-in-with-Google row. Optional — anonymous flow still works if
-    /// the user skips. Shown on the pitch step so account creation happens
-    /// once, before they invest in any data entry.
+    /// Sign-in row state. Shared between the Apple + Google flows so we can
+    /// disable both buttons while one is in flight (prevents a user from
+    /// kicking off Google sign-in mid-Apple sheet and ending up with two
+    /// half-completed sessions racing each other into the Keychain).
+    ///
+    /// The raw nonce for SiwA replay defense isn't held here — it lives in
+    /// `AppleSignIn.shared` between `prepareNonce()` and
+    /// `completeAuthorization(...)` so it survives across the system
+    /// authorization sheet without leaking through SwiftUI @State.
     @State private var signingIn = false
     @State private var signInError: String?
+
+    /// Sign in with Apple. Hard requirement for App Store submission per
+    /// Apple Review Guideline 4.8: an app that offers Google sign-in MUST
+    /// also offer SiwA. Uses `SignInWithAppleButton` for Apple's official
+    /// visual treatment, then routes the credential through
+    /// `AuthSession.completeSignInWithApple` for nonce-bound exchange with
+    /// our backend.
+    @ViewBuilder
+    private var appleSignInRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SignInWithAppleButton(.signIn) { request in
+                // Stash a CSPRNG-derived nonce on the request. The raw value
+                // stays in AppleSignIn.shared until completion so the backend
+                // can verify the identity_token's `nonce` claim matches.
+                let (_, hashed) = AppleSignIn.shared.prepareNonce()
+                request.requestedScopes = [.fullName, .email]
+                request.nonce = hashed
+            } onCompletion: { result in
+                Task { await handleAppleSignInResult(result) }
+            }
+            .signInWithAppleButtonStyle(.white)
+            .frame(height: 44)
+            .disabled(signingIn)
+            .opacity(signingIn ? 0.5 : 1)
+        }
+    }
+
+    private func handleAppleSignInResult(_ result: Result<ASAuthorization, Swift.Error>) async {
+        signingIn = true
+        defer { signingIn = false }
+        switch result {
+        case .success(let authorization):
+            guard let cred = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                signInError = "Apple sign-in didn't return a credential."
+                return
+            }
+            do {
+                try await AuthSession.shared.completeSignInWithApple(credential: cred)
+                signInError = nil
+                // Pre-fill the name field if SiwA gave us one on first sign-in.
+                // After the first sign-in Apple returns nil for fullName even
+                // on the same Apple ID, so this only fires once per account.
+                if let pn = cred.fullName {
+                    let first = pn.givenName?.trimmingCharacters(in: .whitespaces)
+                    if let f = first, !f.isEmpty, name.isEmpty {
+                        name = f
+                    }
+                }
+            } catch {
+                signInError = error.localizedDescription
+            }
+        case .failure(let error):
+            // User cancellation is the dominant case — silently swallow it.
+            if let asError = error as? ASAuthorizationError, asError.code == .canceled {
+                return
+            }
+            signInError = error.localizedDescription
+        }
+    }
 
     @ViewBuilder
     private var googleSignInRow: some View {

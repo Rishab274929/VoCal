@@ -16,12 +16,13 @@
 import Foundation
 import Security
 import Combine
+import AuthenticationServices
 
 @MainActor
 final class AuthSession: ObservableObject {
     static let shared = AuthSession()
 
-    enum Provider: String, Codable { case anonymous, google }
+    enum Provider: String, Codable { case anonymous, google, apple }
 
     private struct Snapshot: Codable {
         let userID: String
@@ -116,6 +117,73 @@ final class AuthSession: ObservableObject {
         // second device.
     }
 
+    /// Sign in with Apple. Same anon-merge semantics as Google: if we were
+    /// previously running anon, pass those credentials so the backend can
+    /// relink existing meals/profile to the new Apple identity.
+    ///
+    /// SiwA is a HARD requirement for App Store submission per Apple Review
+    /// Guideline 4.8 — any app that offers a third-party social login
+    /// (Google/Facebook/etc.) MUST also offer SiwA. Without this method
+    /// wired into OnboardingFlow, the next App Store submission gets
+    /// rejected before TestFlight processing finishes.
+    func signInWithApple() async throws {
+        // Capture prior anon credentials BEFORE awaits (same pattern as
+        // Google) so concurrent state changes can't race us out of the
+        // ones-and-only chance to hand the merge tokens to the backend.
+        let (uid, tok) = priorAnonForLinking()
+        let resp = try await AppleSignIn.shared.signIn(
+            linkAnonymousUserID: uid,
+            linkAnonymousToken: tok
+        )
+        applyAppleResponse(resp)
+    }
+
+    /// SwiftUI path: called from `SignInWithAppleButton.onCompletion`. Hand
+    /// over the credential and we exchange + persist. Mirrors
+    /// `signInWithApple()` but skips the imperative controller dance since
+    /// `SignInWithAppleButton` already did it for us.
+    func completeSignInWithApple(credential: ASAuthorizationAppleIDCredential) async throws {
+        let (uid, tok) = priorAnonForLinking()
+        let resp = try await AppleSignIn.shared.completeAuthorization(
+            credential: credential,
+            linkAnonymousUserID: uid,
+            linkAnonymousToken: tok
+        )
+        applyAppleResponse(resp)
+    }
+
+    /// Captures the current anonymous user_id + token if we have one, so the
+    /// backend can merge anon-era data into the new Apple identity. Returns
+    /// (nil, nil) if we're already signed in to a real provider.
+    private func priorAnonForLinking() -> (userID: String?, token: String?) {
+        if current?.provider == .anonymous {
+            return (current?.userID, current?.token)
+        }
+        return (nil, nil)
+    }
+
+    private func applyAppleResponse(_ resp: AppleSignIn.AppleAuthResponse) {
+        // SiwA doesn't return email/displayName/picture on every sign-in
+        // (Apple policy: those arrive only on the FIRST authorization, and
+        // only if the user opted to share them). Carry forward whatever we
+        // already had so we don't blank out a previously-seen profile.
+        let snap = Snapshot(
+            userID: resp.user_id,
+            token: resp.token,
+            expiresAt: Date(timeIntervalSince1970: TimeInterval(resp.expires_at) / 1000),
+            deviceID: current?.deviceID ?? Self.loadOrCreateDeviceID(),
+            provider: .apple,
+            email: current?.email,
+            displayName: current?.displayName,
+            pictureURL: current?.pictureURL
+        )
+        current = snap
+        userID = snap.userID
+        provider = .apple
+        isAuthenticated = true
+        Keychain.save(snap, key: Self.keychainKey)
+    }
+
     // MARK: - Public surface
 
     /// Ensures we have a valid (non-expired) token. Refreshes if needed.
@@ -138,8 +206,8 @@ final class AuthSession: ObservableObject {
         if current?.provider == .anonymous || current == nil {
             return try await refresh().token
         }
-        // Google: return the stale token rather than overwrite the
-        // Google identity with a fresh anon one. The backend will reject
+        // Google / Apple: return the stale token rather than overwrite the
+        // signed-in identity with a fresh anon one. The backend will reject
         // it with 401, and the caller can prompt the user to sign in
         // again. (Backend should ideally tolerate clock skew + grace.)
         return current?.token ?? ""
