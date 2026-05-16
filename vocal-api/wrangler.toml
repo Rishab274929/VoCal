@@ -1,0 +1,13 @@
+name = "vocal-best"
+compatibility_date = "2025-04-01"
+pages_build_output_dir = "vocal-web/dist"
+
+# Bindings are configured in the Cloudflare dashboard for production. Set:
+#   - WAFER_API_KEY   (Secret)
+#   - OPENROUTER_API_KEY (Secret)
+#   - USDA_FDC_API_KEY (Secret, optional)
+#   - FOOD_KV (KV namespace, optional — caches resolved meals for 30 days)
+#   - DB (D1 database, optional — meal log persistence)
+#
+# For `wrangler pages dev` locally, create vocal-api/.dev.vars with the same
+# keys to avoid putting secrets in this file.

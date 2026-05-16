@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler pages dev`. Do NOT commit.
+# .gitignore'd via the top-level .gitignore (.env, .dev.vars).
+WAFER_API_KEY=wfr_xxx
+OPENROUTER_API_KEY=sk-or-v1-xxx
+USDA_FDC_API_KEY=

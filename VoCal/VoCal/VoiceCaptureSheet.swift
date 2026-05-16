@@ -485,7 +485,9 @@ private enum VoiceAPIClient {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 6
+        // 15s is enough headroom for the backend's LLM path (chain canon hits
+        // resolve in <100ms; LLM cache-miss is ~2-8s; USDA fallback ~1-2s).
+        request.timeoutInterval = 15
         request.httpBody = try JSONEncoder().encode(
             VoiceParsePayload(transcript: transcript, follow_up_answer: followUpAnswer)
         )

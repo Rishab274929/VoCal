@@ -135,7 +135,8 @@ enum VoiceParseAPI {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 8
+        // Match VoiceCaptureSheet; LLM path can be ~5-8s.
+        request.timeoutInterval = 15
         request.httpBody = try JSONEncoder().encode(VoiceParsePayload(transcript: transcript, follow_up_answer: followUp))
 
         let (data, response) = try await URLSession.shared.data(for: request)
