@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../services/auth_session.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -30,10 +31,49 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   int _weight = 168;
   double _goalKcal = 2200;
 
+  // Google sign-in row state — only meaningful on the pitch step. Kept
+  // here instead of a nested StatefulWidget because the row is the only
+  // async-driven part of the pitch and pulling it out would balloon the
+  // file with a separate widget for two booleans.
+  bool _signingIn = false;
+  String? _signInError;
+
   @override
   void dispose() {
     _name.dispose();
     super.dispose();
+  }
+
+  /// Tap handler for the "Continue with Google" button on the pitch step.
+  /// On success the prior anon JWT (if any) is sent to the backend so the
+  /// user's pre-sign-in meals can be merged into the Google identity.
+  /// Pre-fills the name field with Google's display name if we get one.
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _signingIn = true;
+      _signInError = null;
+    });
+    try {
+      final auth = context.read<AuthSession>();
+      await auth.signInWithGoogle();
+      if (!mounted) return;
+      // Pre-fill the name field if Google gave us one — saves a step.
+      // Use the first space-delimited token so "Jane Smith" → "Jane",
+      // matching the iOS behavior in OnboardingFlow.swift.
+      final dn = auth.displayName;
+      if (dn != null && dn.isNotEmpty && _name.text.trim().isEmpty) {
+        final first = dn.split(' ').first;
+        _name.text = first.isEmpty ? dn : first;
+      }
+    } on AuthCancelledException {
+      // User backed out of the account picker — no error UI.
+    } on AuthException catch (e) {
+      if (mounted) setState(() => _signInError = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _signInError = e.toString());
+    } finally {
+      if (mounted) setState(() => _signingIn = false);
+    }
   }
 
   bool get _canAdvance =>
@@ -225,6 +265,112 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         pill("medium fry from McDonald's"),
         pill('grande iced oat latte from Starbucks'),
         pill('Chipotle bowl, double chicken, guac'),
+        const SizedBox(height: 18),
+        _googleSignInRow(),
+      ],
+    );
+  }
+
+  /// Sign-in-with-Google row + "Continue as guest" affordance. Matches the
+  /// iOS pitch step (see VoCal/OnboardingFlow.swift googleSignInRow).
+  ///
+  /// Anonymous is the default behavior of bootstrap() — the guest button
+  /// here is therefore literally a no-op that advances onboarding. We
+  /// surface it explicitly so the user has a clear "I'm staying anon"
+  /// signal rather than feeling forced into Google sign-in.
+  Widget _googleSignInRow() {
+    final auth = context.watch<AuthSession>();
+    // Once the user is signed in via Google, replace the row with a
+    // confirmation chip so a second tap doesn't trigger another picker.
+    if (auth.provider == 'google') {
+      return Row(
+        children: [
+          const Icon(Icons.check_circle,
+              size: 14, color: Palette.voltage),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              auth.email != null
+                  ? 'Signed in as ${auth.email}'
+                  : 'Signed in with Google',
+              style: AppType.body(12,
+                  weight: FontWeight.w600, color: Palette.ash),
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // The button is built inline (rather than reused via VoltageButton)
+        // because it needs the inverted bone-on-ink color treatment that
+        // matches iOS's Google sign-in chip — VoltageButton would emit the
+        // brand voltage chip instead.
+        GestureDetector(
+          onTap: _signingIn ? null : _signInWithGoogle,
+          child: Opacity(
+            opacity: _signingIn ? 0.6 : 1.0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 18, vertical: 12),
+              decoration: BoxDecoration(
+                color: Palette.bone,
+                borderRadius: BorderRadius.circular(40),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_signingIn)
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Palette.ink),
+                    )
+                  else
+                    const Icon(Icons.g_mobiledata,
+                        size: 22, color: Palette.ink),
+                  const SizedBox(width: 8),
+                  Text(
+                      _signingIn
+                          ? 'Opening Google…'
+                          : 'Continue with Google',
+                      style: AppType.body(13,
+                          weight: FontWeight.w600,
+                          color: Palette.ink)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // "Continue as guest" — anon is already the default after
+        // bootstrap(), so we just advance to the next step. Naming the
+        // button is the point: it makes the choice explicit instead of
+        // a silent "I closed the Google chip" path.
+        GestureDetector(
+          onTap: _signingIn ? null : _advance,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'Continue as guest',
+              textAlign: TextAlign.center,
+              style: AppType.body(12,
+                  weight: FontWeight.w600, color: Palette.ash),
+            ),
+          ),
+        ),
+        if (_signInError != null) ...[
+          const SizedBox(height: 6),
+          Text(_signInError!,
+              style: AppType.body(11,
+                  weight: FontWeight.w500, color: Palette.pulse)),
+        ],
+        const SizedBox(height: 4),
+        Text(
+            "Optional. Skip and we'll keep your data device-only.",
+            style: AppType.body(11, color: Palette.smoke)),
       ],
     );
   }

@@ -30,9 +30,17 @@ class VoiceApiClient {
   /// 15s headroom for the backend LLM path (chain canon hits resolve in
   /// <100ms; LLM cache-miss is ~2-8s; USDA fallback ~1-2s). Mirrors iOS
   /// VoiceCaptureSheet.swift timeoutInterval = 15.
+  ///
+  /// [authToken]: the VoCal bearer JWT minted by AuthSession. Optional —
+  /// the backend's body-fallback path still resolves the caller via the
+  /// in-body `user_id`, so a null token is non-fatal for legacy clients.
+  /// But every NEW request site should pass one so user-scoped Cloudflare
+  /// KV cache keys are populated and backend rate-limit buckets stay
+  /// per-user.
   static Future<VoiceParseResponse> parseMeal({
     required String transcript,
     String? followUpAnswer,
+    String? authToken,
   }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}/voice/parse');
     // Match the iOS payload shape exactly: when followUpAnswer is null,
@@ -46,12 +54,19 @@ class VoiceApiClient {
       body['follow_up_answer'] = followUpAnswer;
     }
 
+    // Build headers inline so we can layer in the bearer when present
+    // without re-allocating a map for the no-auth path.
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (authToken != null && authToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $authToken';
+    }
+
     final http.Response res;
     try {
       res = await http
           .post(
             uri,
-            headers: const {'Content-Type': 'application/json'},
+            headers: headers,
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 15));

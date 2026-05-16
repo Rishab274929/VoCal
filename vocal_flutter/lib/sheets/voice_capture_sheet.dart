@@ -131,8 +131,16 @@ class _VoiceCaptureSheetState extends State<VoiceCaptureSheet> {
     }
 
     try {
+      // Attach the bearer minted by AuthSession so the backend can route
+      // the parse to user-scoped KV cache + rate-limit buckets. Falls back
+      // to null when AuthSession hasn't bootstrapped yet (tests, or first
+      // launch with no network) — backend's body-fallback path still
+      // accepts that.
+      final token = await context.read<AppModel>().auth?.currentToken();
       final res = await VoiceApiClient.parseMeal(
-          transcript: text, followUpAnswer: followUp);
+          transcript: text,
+          followUpAnswer: followUp,
+          authToken: token);
       _reasoning = res.reasoning;
       if (res.followUpQuestion != null && res.meal == null) {
         setState(() {

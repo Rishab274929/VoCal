@@ -7,8 +7,10 @@
 // could later bridge HealthKit (and Health Connect on Android) via a plugin.
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import '../services/auth_session.dart';
 import '../services/persistence.dart';
 
 class AppModel extends ChangeNotifier {
@@ -19,6 +21,31 @@ class AppModel extends ChangeNotifier {
   List<CoachMessage> coachMessages;
   bool hasCompletedOnboarding;
   MealEntry? lastSavedMeal;
+
+  /// Lazily-injected by main() after bootstrap. Stored here (rather than
+  /// pulled from Provider at each call site) so meal-save flows can attach
+  /// the bearer to outgoing API calls without every caller having to drill
+  /// through `context`. Null in tests and before main() wires it in —
+  /// always null-check before touching.
+  AuthSession? auth;
+
+  // ---------------------------------------------------------------------------
+  // Free-tier voice cap (parity with iOS — 3 voice logs / day on Free).
+  //
+  // Stored in SharedPreferences (not the on-disk snapshot) so the cap is
+  // resilient to a snapshot rewrite/restore — restoring a backup from a
+  // different day shouldn't grant a phantom 3 fresh logs. Keys are mirrored
+  // exactly from the iOS UserDefaults keys so a future Flutter→native bridge
+  // sees the same data.
+  static const String _voiceCountKey = 'vocal.dailyVoiceCount.v1';
+  static const String _voiceDateKey = 'vocal.dailyVoiceDate.v1';
+  static const int freeVoiceCapPerDay = 3;
+
+  int _dailyVoiceCount = 0;
+  /// ISO-8601 yyyy-MM-dd (day only) of the day _dailyVoiceCount belongs to.
+  /// Empty string means "never logged"; treated as a different day from any
+  /// real date so the next check resets the counter (this is desired).
+  String _dailyVoiceDate = '';
 
   /// Idempotency window — the cooldown between accepting two saves of the
   /// same logical meal. Matches iOS AppModel.dedupeWindow.
@@ -201,5 +228,89 @@ class AppModel extends ChangeNotifier {
     DailyMacrosSnapshot.writeFrom(totals);
     _persist();
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Free-tier voice cap
+  //
+  // The counter and date live in SharedPreferences (not the JSON snapshot)
+  // so a snapshot restore can't reset a user's daily cap mid-day. We hydrate
+  // lazily on first read — that's cheap and avoids forcing every caller of
+  // AppModel.fromPersistedOrEmpty() to await an extra round-trip on launch.
+
+  static String _todayKey() {
+    // yyyy-MM-dd in local time. We deliberately use local time (not UTC) so
+    // "a day" matches the user's calendar; a New York user shouldn't get
+    // their cap reset at 8 PM because UTC midnight ticked over.
+    final n = DateTime.now();
+    final m = n.month.toString().padLeft(2, '0');
+    final d = n.day.toString().padLeft(2, '0');
+    return '${n.year}-$m-$d';
+  }
+
+  bool _capHydrated = false;
+  Future<void> _hydrateVoiceCapIfNeeded() async {
+    if (_capHydrated) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _dailyVoiceCount = prefs.getInt(_voiceCountKey) ?? 0;
+      _dailyVoiceDate = prefs.getString(_voiceDateKey) ?? '';
+    } catch (_) {
+      // Best-effort — if SharedPreferences is unavailable (very rare),
+      // treat as fresh day with zero usage. Worst case: user gets a few
+      // extra logs for this session.
+      _dailyVoiceCount = 0;
+      _dailyVoiceDate = '';
+    }
+    _capHydrated = true;
+  }
+
+  /// Synchronous in-memory rollover — call after `_hydrateVoiceCapIfNeeded()`
+  /// has run at least once (canLogVoice / recordVoiceLog both await it).
+  void _rolloverVoiceCounterIfNeeded() {
+    final today = _todayKey();
+    if (_dailyVoiceDate != today) {
+      _dailyVoiceCount = 0;
+      _dailyVoiceDate = today;
+    }
+  }
+
+  /// True when the user is allowed to start a voice-log flow. Pro users
+  /// are always allowed. Free users get `freeVoiceCapPerDay` logs per
+  /// local calendar day; this method handles the day rollover internally
+  /// so callers don't need to invoke `rolloverIfNewDay()` first.
+  ///
+  /// Awaiting this at the point-of-action keeps the cap honest even if
+  /// the app sat in the background overnight and never got a foreground
+  /// lifecycle callback.
+  Future<bool> canLogVoice() async {
+    if (profile.entitlement == Entitlement.pro) return true;
+    await _hydrateVoiceCapIfNeeded();
+    _rolloverVoiceCounterIfNeeded();
+    return _dailyVoiceCount < freeVoiceCapPerDay;
+  }
+
+  /// Cached in-memory count — only meaningful after canLogVoice has been
+  /// awaited at least once this session. Useful for surfacing "2 of 3 used
+  /// today" badges without re-awaiting.
+  int get dailyVoiceCountCached => _dailyVoiceCount;
+
+  /// Bump the counter after a successful voice meal save. Persists to
+  /// SharedPreferences so the cap survives an app kill. Does NOT call
+  /// `notifyListeners()` because the meal save that triggered this already
+  /// did, and an extra notify would re-render the whole tree for nothing.
+  Future<void> recordVoiceLog() async {
+    if (profile.entitlement == Entitlement.pro) return;
+    await _hydrateVoiceCapIfNeeded();
+    _rolloverVoiceCounterIfNeeded();
+    _dailyVoiceCount += 1;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_voiceCountKey, _dailyVoiceCount);
+      await prefs.setString(_voiceDateKey, _dailyVoiceDate);
+    } catch (_) {
+      // In-memory state is still bumped, so the user is gated for the rest
+      // of this session even if the persistence write failed.
+    }
   }
 }
