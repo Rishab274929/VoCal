@@ -133,7 +133,7 @@ export async function parseTranscript(
         { role: "user", content: userMsg }
       ],
       responseFormat: "json_object",
-      maxTokens: 400,
+      maxTokens: 1500,
       temperature: 0.1
     }, env);
 
@@ -209,13 +209,25 @@ function isValidMeal(p: LLMMealOutput): boolean {
 }
 
 function safeJson<T>(raw: string): T | null {
-  try {
-    // Some providers wrap JSON in fenced blocks. Strip ```json … ``` if present.
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    return JSON.parse(fenced?.[1] ?? raw) as T;
-  } catch {
-    return null;
+  // 1. Strip ```json ... ``` if the model fenced its output.
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidates: string[] = [];
+  if (fenced?.[1]) candidates.push(fenced[1]);
+  candidates.push(raw);
+
+  // 2. Extract the first balanced-brace object. Thinking models sometimes
+  // emit reasoning prose around the JSON, e.g. "Let me think... { ... }".
+  const objMatch = raw.match(/\{[\s\S]*\}/);
+  if (objMatch) candidates.push(objMatch[0]);
+
+  for (const cand of candidates) {
+    try {
+      return JSON.parse(cand) as T;
+    } catch {
+      // try next candidate
+    }
   }
+  return null;
 }
 
 async function cacheAndReturn(

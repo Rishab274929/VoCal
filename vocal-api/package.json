@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev vocal-web/dist --compatibility-date=2025-04-01 --port 8788",
-    "deploy": "wrangler pages deploy vocal-web/dist --project-name vocal-best",
+    "deploy": "wrangler pages deploy vocal-web/dist --project-name vocal",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

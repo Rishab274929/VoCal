@@ -146,3 +146,41 @@ This closes priority #5 from the original audit list. The codebase now has *one*
 - ✅ #10 Parallel SpeechRecorder permissions → `async let` for both prompts
 
 Ralph loop iteration target reached. Next iteration could add: real coach LLM wiring (still uses 4 hardcoded `if` branches), App Group sharing so widget/intent really see app state from a separate process, and on-device canon expansion from ~100 entries to the targeted ~1000 by importing the USDA FDC CSV.
+
+### Iteration 14 — DEPLOYED to vocal.best
+
+Pulled the stashed `vocal-api/` work that was sitting on `feat/prophet-lab-forecasting-agent` and merged the non-conflicting pieces (coach/bodyfat/meals/auth/health endpoints, D1 schema, JWT lib, vocal-web/dist landing pages, APIConfig.swift). My LLM-enabled `voice/parse` + foodParser + chain canon stayed; the stash's hand-rolled versions of those were not pulled. Stole the small/medium/large fries size variants from the stash's foodParser into canon.ts so `large fry from McDonalds` resolves correctly.
+
+Then DEPLOYED to Cloudflare Pages — the project is named `vocal` (not `vocal-best` as I had in wrangler.toml). Bound domains: `vocal.pages.dev` and `vocal.best`. Steps:
+
+1. `wrangler pages secret put WAFER_API_KEY --project-name vocal` — uploaded.
+2. `wrangler pages secret put OPENROUTER_API_KEY --project-name vocal` — uploaded.
+3. `wrangler pages deploy vocal-web/dist --project-name vocal` — success.
+
+Debugged the LLM path live:
+- First model `openai/gpt-oss-120b` doesn't exist on Wafer. Available models per the 404 error: `GLM-5.1`, `Qwen3.5-397B-A17B`, `Qwen3.6-35B-A3B`, `qwen3.6-max-preview`.
+- `qwen3.6-max-preview` works but takes ~35s per call — too slow.
+- `Qwen3.6-35B-A3B` is fast (~4s) but a thinking model: emits chain-of-thought in `reasoning` field, leaves `content: null`. Falling through that to `reasoning_content` didn't help — that's still prose not JSON.
+- `GLM-5.1` is the right choice: emits JSON directly in `content` like a normal OpenAI chat completion. ~3-7s typical latency. Also fills `reasoning_content` for transparency.
+- OpenRouter: account has $0 credit. Fallback path returns 402 "Insufficient credits". User needs to top up at `openrouter.ai/settings/credits` for the fallback to work; Wafer alone is enough for now.
+- Hit a `finish_reason: "length"` issue with pizza — the model spent all 400 max_tokens thinking and never emitted the JSON. Bumped to 1500 max_tokens. Also broadened the JSON extractor (`safeJson`) to try three candidates: fenced ```json ... ```, the raw response, and the first balanced-brace `{ ... }` block — so reasoning prose around the JSON doesn't break parsing.
+
+**Final smoke test on production `vocal.best`** — all 9 audit demo phrases work:
+
+| Query | kcal | Latency | Path |
+|---|---|---|---|
+| apple | 95 | 4.0s | LLM (GLM-5.1) |
+| banana | 105 | 3.1s | LLM |
+| 8oz grilled chicken breast | 373 | 5.2s | LLM |
+| slice of pepperoni pizza | 298 | 7.7s | LLM |
+| chicken caesar salad | 440 | 12.4s | LLM |
+| burger king whopper | 670 | 87ms | chain canon |
+| large fry from McDonalds | 480 | 69ms | chain canon |
+| grande iced oat latte from Starbucks | 190 | 76ms | chain canon |
+| Chipotle bowl double chicken brown rice black beans guac | n/a (follow-up: "Single scoop of guac?") | 61ms | chain canon |
+
+The original audit's core finding — "the food parser only knows 4 hardcoded phrases" — is now fully closed: the chain canon covers ~30 named menu items deterministically in <100ms, and the GLM-5.1 LLM resolves everything else with reasonable macros in 3-12s. The on-device Tier 0 canon in the iOS app handles the common whole-food cases (apple, chicken breast, etc.) at <50ms without any network call, so most of those LLM latencies are paid only on cold network paths or when Tier 0 misses.
+
+§13 progress: checks 2, 3, 4 (the three killer voice demos) now have a fully working end-to-end production pipeline — both the iOS app (Tier 0) AND the deployed backend produce correct macros for them. Check 14 (vocal.best /terms /privacy /support all 200) confirmed live. The bodyfat, coach, meals, auth, health endpoints from the stash are deployed too, ready for the iOS app to call.
+
+Next: build iOS archive for TestFlight (check 15) — needs Apple Developer credentials we don't have in this session, so the user will need to take it over for that step OR open Xcode and Archive manually.
