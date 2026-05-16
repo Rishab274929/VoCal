@@ -7,8 +7,8 @@
     <meta name="description" content="Join the VoCal TestFlight beta: voice meal logging for ~25 chains, photo fact-check, body-fat estimate, voice coach, Apple Health write-back, and Siri." />
     <meta name="theme-color" content="#0A0A0B" />
     <link rel="canonical" href="https://vocal.best/beta/" />
-    <link rel="icon" href="/favicon.png" type="image/png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="icon" href="/favicon.jpg" type="image/jpeg" />
+    <link rel="apple-touch-icon" href="/favicon.jpg" />
     <link rel="stylesheet" href="/_shared.css" />
     <style>
       .seats {
@@ -37,6 +37,18 @@
         font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
         color: var(--smoke); margin-top: 2px;
       }
+      .cta-primary {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 16px 28px;
+        border-radius: 999px;
+        background: var(--voltage);
+        color: var(--ink) !important;
+        font-weight: 700; font-size: 15px;
+        text-decoration: none;
+        transition: transform 0.15s ease;
+      }
+      .cta-primary:hover { transform: translateY(-1px); color: var(--ink) !important; }
+      .cta-fallback { margin-top: 18px; }
     </style>
   </head>
   <body>
@@ -73,12 +85,17 @@
       </div>
 
       <p style="margin-top: 24px;">
-        <a class="cta" href="mailto:beta@vocal.best?subject=VoCal%20TestFlight">
-          Request a TestFlight invite →
-        </a>
+        <!-- TODO: replace #TESTFLIGHT_INVITE_URL_PLACEHOLDER with the actual https://testflight.apple.com/join/<code> URL when the build is processed and the public link is live -->
+        <a href="#TESTFLIGHT_INVITE_URL_PLACEHOLDER" class="cta-primary">Join the TestFlight beta</a>
       </p>
       <p class="small">
-        We'll reply within a day with a link. You'll need the TestFlight app on iPhone.
+        You'll need the TestFlight app on iPhone. iOS 18 or later.
+      </p>
+
+      <p class="cta-fallback">
+        Don't have a public TestFlight link yet?
+        <a href="mailto:beta@vocal.best?subject=VoCal%20TestFlight">Email us at beta@vocal.best</a>
+        to be added.
       </p>
 
       <h2>What we want from you</h2>
