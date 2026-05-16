@@ -210,16 +210,42 @@ function safeJson<T>(raw: string): T | null {
   if (fenced?.[1]) candidates.push(fenced[1]);
   candidates.push(raw);
 
-  // 2. Extract the first balanced-brace object. Thinking models sometimes
-  // emit reasoning prose around the JSON, e.g. "Let me think... { ... }".
-  const objMatch = raw.match(/\{[\s\S]*\}/);
-  if (objMatch) candidates.push(objMatch[0]);
+  // 2. Extract the first BALANCED-brace object. The old regex /\{[\s\S]*\}/
+  // is greedy and grabs from the first `{` to the LAST `}`, which fails
+  // when the model emits e.g. `{...} and here's why: {...}`. Scan for the
+  // first `{` and walk forward tracking depth + string state.
+  const balanced = extractBalancedObject(raw);
+  if (balanced) candidates.push(balanced);
 
   for (const cand of candidates) {
     try {
       return JSON.parse(cand) as T;
     } catch {
       // try next candidate
+    }
+  }
+  return null;
+}
+
+function extractBalancedObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (escape) { escape = false; continue; }
+      if (c === "\\") { escape = true; continue; }
+      if (c === '"') { inStr = false; continue; }
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") { depth++; continue; }
+    if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
     }
   }
   return null;

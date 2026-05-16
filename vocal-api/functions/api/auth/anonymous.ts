@@ -62,7 +62,17 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
     // DB miss is non-fatal — token is still valid.
   }
 
-  const secret = bindings.JWT_SECRET || "vocal-dev-secret-rotate-in-prod";
+  // SECURITY: same posture as /api/auth/google — refuse to sign with the
+  // hardcoded default when a real DB is attached. Local `wrangler pages dev`
+  // (no DB binding) is the only case where the dev fallback is acceptable.
+  let secret = bindings.JWT_SECRET;
+  if (!secret || secret.length < 16) {
+    if (bindings.DB) {
+      console.error("auth/anonymous: refusing to sign — JWT_SECRET missing or weak");
+      return json({ error: "Server auth misconfigured" }, { status: 503 });
+    }
+    secret = "vocal-dev-secret-rotate-in-prod";
+  }
   const token = await signJWT({ sub: userId, anon: true }, secret, expiresAt);
 
   return json({

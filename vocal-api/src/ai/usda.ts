@@ -56,15 +56,25 @@ export async function usdaSearch(query: string, env: Env, signal?: AbortSignal):
   const get = (numbers: string[]): number => {
     for (const num of numbers) {
       const n = hit.foodNutrients.find(x => x.nutrientNumber === num);
-      if (n && typeof n.value === "number") return n.value;
+      if (n && typeof n.value === "number" && isFinite(n.value)) return n.value;
     }
     return 0;
   };
 
   // USDA nutrient numbers:
   //   208 Energy (kcal), 203 Protein, 205 Carbs, 204 Total fat
+  // Energy alternates: 957 (Atwater, general), 268 (kJ → kcal at 0.239).
+  const kcalDirect = get(["208", "957"]);
+  const kj = get(["268"]);
+  const kcal = kcalDirect > 0 ? kcalDirect : Math.round(kj * 0.239);
+
+  // Treat zero-kcal hits as "no usable data". USDA sometimes returns rows
+  // (e.g. water, raw spices) with kcal absent — surfacing them as a 0-cal
+  // meal would silently log garbage. Return null so the caller falls through.
+  if (kcal <= 0) return null;
+
   return {
-    kcal: get(["208"]),
+    kcal,
     protein_g: get(["203"]),
     carbs_g: get(["205"]),
     fat_g: get(["204"]),

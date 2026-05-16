@@ -117,6 +117,8 @@ async function callGemini(key: string, model: string, opts: CallOptions): Promis
   // Convert OpenAI-style messages to Gemini's content/parts shape.
   const system = opts.messages.find(m => m.role === "system");
   const turns = opts.messages.filter(m => m.role !== "system");
+  let droppedImages = 0;
+  let attachedImages = 0;
   const contents = turns.map(m => {
     const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
     if (typeof m.content === "string") {
@@ -125,10 +127,18 @@ async function callGemini(key: string, model: string, opts: CallOptions): Promis
       for (const p of m.content) {
         if (p.type === "text" && p.text) parts.push({ text: p.text });
         if (p.type === "image_url" && p.image_url?.url) {
-          // Strip data: prefix
+          // Strip data: prefix. Gemini only accepts inline base64; remote URLs
+          // are not supported. If the URL isn't a data: URL we have to drop
+          // the image — surface that as a provider error so the rotator can
+          // try the next provider rather than silently sending text-only.
           const url = p.image_url.url;
           const match = url.match(/^data:(.+?);base64,(.+)$/);
-          if (match) parts.push({ inline_data: { mime_type: match[1], data: match[2] } });
+          if (match) {
+            parts.push({ inline_data: { mime_type: match[1], data: match[2] } });
+            attachedImages++;
+          } else {
+            droppedImages++;
+          }
         }
       }
     }
@@ -137,6 +147,12 @@ async function callGemini(key: string, model: string, opts: CallOptions): Promis
       parts
     };
   });
+  if (droppedImages > 0 && attachedImages === 0) {
+    // Caller asked for vision but every image was un-attachable. Throw a
+    // non-rotatable error — re-trying the same payload on another Gemini key
+    // won't help.
+    throw new ProviderError("gemini", 400, "all images were non-data-URL; cannot attach");
+  }
 
   const body: Record<string, unknown> = {
     contents,
@@ -250,8 +266,14 @@ async function safeText(res: Response): Promise<string> {
 function stringifyMessage(m: ChatMessage): { role: string; content: string } {
   if (typeof m.content === "string") return { role: m.role, content: m.content };
   // Text-only providers can't take image parts. Drop images, keep text.
-  const text = m.content.filter(p => p.type === "text").map(p => p.text ?? "").join("\n");
-  return { role: m.role, content: text };
+  // If the message was image-only, leave a marker so the upstream gets a
+  // non-empty content and a clear hint that we routed a vision request to
+  // a text provider by mistake (the caller should set needsVision=true).
+  const text = m.content.filter(p => p.type === "text").map(p => p.text ?? "").join("\n").trim();
+  return {
+    role: m.role,
+    content: text || "[image content omitted — text-only provider; caller must set needsVision]"
+  };
 }
 
 function isRotatableStatus(status: number): boolean {
@@ -320,7 +342,8 @@ export async function callLLM(opts: CallOptions, env: Env): Promise<CallResult> 
   for (const provider of providers) {
     if (opts.needsVision && !provider.vision) continue;
     if (provider.keys.length === 0) continue;
-    for (const key of provider.keys) {
+    let bailProvider = false;
+    keyLoop: for (const key of provider.keys) {
       for (const model of provider.models) {
         const started = Date.now();
         try {
@@ -329,14 +352,18 @@ export async function callLLM(opts: CallOptions, env: Env): Promise<CallResult> 
         } catch (err) {
           const e = err as ProviderError;
           errors.push(`${provider.name}/${model}/${maskKey(key)}: ${e.message}`);
-          // For non-rotatable errors (e.g. 400 bad request) the same payload
-          // will fail on every other key/model — bail out of this provider.
+          // For non-rotatable errors (e.g. 400 bad request, 404 model not found)
+          // the same payload will fail on EVERY key+model for this provider —
+          // bail out of both the model loop and the key loop. Without the
+          // labeled break we'd waste every key on a payload-side bug.
           if (e instanceof ProviderError && !isRotatableStatus(e.status)) {
-            break;
+            bailProvider = true;
+            break keyLoop;
           }
         }
       }
     }
+    void bailProvider;
   }
 
   throw new Error(`All providers exhausted. Last errors: ${errors.slice(-3).join(" | ")}`);

@@ -1,5 +1,24 @@
 # Copy to .dev.vars for `wrangler pages dev`. Do NOT commit.
 # .gitignore'd via the top-level .gitignore (.env, .dev.vars).
+
+# --- LLM providers (any one works; pool rotates across all configured) ---
 WAFER_API_KEY=wfr_xxx
 OPENROUTER_API_KEY=sk-or-v1-xxx
+GEMINI_API_KEY=
+GROQ_API_KEY=
+MISTRAL_API_KEY=
+
+# Comma-separated bulk seeding (alternative to numbered _API_KEY_2/_3/...)
+WAFER_API_KEYS=
+GEMINI_API_KEYS=
+
+# --- Auth (required for /api/auth/* in production-like setups) ---
+# Generate a strong secret: openssl rand -hex 32
+JWT_SECRET=
+# At least one Google client ID required for /api/auth/google to issue tokens.
+GOOGLE_CLIENT_ID_IOS=
+GOOGLE_CLIENT_ID_ANDROID=
+GOOGLE_CLIENT_ID_WEB=
+
+# --- Other ---
 USDA_FDC_API_KEY=

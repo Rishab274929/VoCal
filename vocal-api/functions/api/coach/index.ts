@@ -14,6 +14,7 @@
 import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env } from "../../../src/types";
 import { chat } from "../../../src/ai/llmClient";
+import { authIdentity, resolveUserId } from "../../../src/lib/auth";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -60,14 +61,23 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Size cap — coach payloads include a history array but should never exceed
+  // a few KB. 64KB is comfortable headroom and stops malicious giant bodies.
+  const contentLength = Number(request.headers.get("content-length") || "0");
+  if (contentLength && contentLength > 64 * 1024) {
+    return json({ error: "Request body too large" }, 413);
+  }
   let body: CoachBody;
   try {
     body = (await request.json()) as CoachBody;
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
-  const prompt = (body.prompt ?? "").trim();
-  if (!prompt) return json({ error: "prompt required" }, 400);
+  const rawPrompt = (body.prompt ?? "").trim();
+  if (!rawPrompt) return json({ error: "prompt required" }, 400);
+  // Cap prompt length — 2000 chars is more than any natural coach question and
+  // stops malicious payloads from blowing through the LLM context budget.
+  const prompt = rawPrompt.slice(0, 2000);
 
   // --- Day-state context line (either from request or D1 fallback) ---
   let context = "";
@@ -78,10 +88,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const proteinShort = Math.max(0, t.protein_goal - t.protein_eaten);
     context = `Day so far: ${t.calories_eaten} of ${t.calorie_goal} kcal (${kcalLeft} left). Protein ${t.protein_eaten} of ${t.protein_goal}g (${proteinShort}g short). Carbs ${t.carbs_eaten}g, fat ${t.fat_eaten}g.`;
   } else {
-    const bindings = env as unknown as { DB?: D1Database };
+    const bindings = env as unknown as { DB?: D1Database; JWT_SECRET?: string };
     if (bindings.DB) {
       try {
-        const userId = body.user_id?.trim() || "demo-user";
+        // Prefer JWT identity for who-am-I; fall back to body.user_id for
+        // legacy clients. Without auth we should NOT happily serve another
+        // user's row — but for back-compat we keep the path and log it.
+        const identity = await authIdentity(request, bindings);
+        const { userId, mismatch } = resolveUserId(identity, body.user_id);
+        if (mismatch) {
+          console.warn("coach: rejecting client user_id, using JWT sub", { jwt: identity.userId, claimed: body.user_id });
+        }
         const startTs = new Date(); startTs.setHours(0, 0, 0, 0);
         const row = await bindings.DB.prepare(
           `SELECT COALESCE(SUM(kcal),0) AS k, COALESCE(SUM(protein_g),0) AS p, COUNT(*) AS c
@@ -105,10 +122,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     { role: "system", content: SYSTEM_PROMPT }
   ];
   if (context) messages.push({ role: "system", content: `Context — ${context}` });
-  for (const turn of (body.history ?? []).slice(-8)) {
-    if (turn.role === "user" || turn.role === "assistant") {
-      messages.push({ role: turn.role, content: turn.content });
-    }
+  // Validate each history turn: drop malformed entries, cap per-turn content
+  // length, and limit total turns. Untrusted history is the classic vector
+  // for prompt-injection (a malicious client could inject a fake assistant
+  // turn that says "ignore previous instructions"). We can't prevent that
+  // since the user controls their own client, but we can keep it bounded.
+  const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+  for (const turn of history) {
+    if (!turn || (turn.role !== "user" && turn.role !== "assistant")) continue;
+    if (typeof turn.content !== "string") continue;
+    messages.push({ role: turn.role, content: turn.content.slice(0, 1500) });
   }
   messages.push({ role: "user", content: prompt });
 
@@ -117,10 +140,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const reply = stripJsonNoise(result.content);
     return json({ reply, provider: result.provider, model: result.model, latencyMs: result.latencyMs }, 200);
   } catch (err) {
+    // Log the provider error for observability, but don't echo it to the
+    // client — provider failures can include key fragments or internal URLs.
+    console.error("coach: all providers failed", (err as Error).message);
     return json({
       reply: heuristic(prompt, fallbackTotals),
-      provider: "fallback",
-      error: (err as Error).message
+      provider: "fallback"
     }, 200);
   }
 };

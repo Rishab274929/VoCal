@@ -149,7 +149,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ params, env }) => {
     }
   }
   if (!off) {
-    return json({ error: lastErr || "No barcode data source available", code: raw }, 502);
+    // Don't leak upstream error text to the client — it can include hostnames,
+    // status codes, and other internal-state info. Log it for observability.
+    if (lastErr) console.error("barcode lookup failed", { code: raw, lastErr });
+    return json({ error: "No barcode data source available", code: raw }, 502);
   }
 
   if (off.status !== 1 || !off.product) {

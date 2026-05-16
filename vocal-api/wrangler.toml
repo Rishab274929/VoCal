@@ -3,11 +3,28 @@ compatibility_date = "2025-04-01"
 pages_build_output_dir = "vocal-web/dist"
 
 # Bindings are configured in the Cloudflare dashboard for production. Set:
-#   - WAFER_API_KEY   (Secret)
-#   - OPENROUTER_API_KEY (Secret)
-#   - USDA_FDC_API_KEY (Secret, optional)
-#   - FOOD_KV (KV namespace, optional — caches resolved meals for 30 days)
-#   - DB (D1 database, optional — meal log persistence)
+#
+# LLM providers (any combination — the pool rotates across whatever's set):
+#   - WAFER_API_KEY / WAFER_API_KEYS         (Secret) — flat-rate, vision-capable
+#   - GEMINI_API_KEY / GEMINI_API_KEYS       (Secret) — free tier, vision-capable
+#   - GROQ_API_KEY / GROQ_API_KEYS           (Secret) — fast text-only Llama 3.x
+#   - MISTRAL_API_KEY / MISTRAL_API_KEYS     (Secret) — text-only fallback
+#   - OPENROUTER_API_KEY / OPENROUTER_API_KEYS (Secret) — pay-as-you-go fallback
+#
+# Auth (REQUIRED in production — without these the auth endpoints refuse to sign):
+#   - JWT_SECRET                  (Secret, min 16 chars) — HS256 signing key
+#   - GOOGLE_CLIENT_ID_IOS        (Secret) — at least one required for /api/auth/google
+#   - GOOGLE_CLIENT_ID_ANDROID    (Secret)
+#   - GOOGLE_CLIENT_ID_WEB        (Secret)
+#
+# Other infra:
+#   - USDA_FDC_API_KEY            (Secret, optional) — FDC lookups + barcode resolution
+#   - FOOD_KV                     (KV namespace, optional) — 30-day meal cache
+#   - DB                          (D1 database, optional) — meal log persistence
+#
+# Do NOT put any of these under [vars] in this file — `[vars]` values are
+# plaintext in the deployed config and visible to anyone with build access.
+# Use the Cloudflare dashboard Secrets UI, or `wrangler secret put NAME`.
 #
 # For `wrangler pages dev` locally, create vocal-api/.dev.vars with the same
-# keys to avoid putting secrets in this file.
+# keys (gitignored at the repo root) to avoid putting secrets in this file.

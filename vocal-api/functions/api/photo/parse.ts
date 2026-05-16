@@ -27,6 +27,13 @@ const CORS = {
 };
 
 const MAX_IMAGE_BYTES = 1_500_000;
+// Base64 expansion is exactly 4/3 ≈ 1.3333, plus padding (up to +2 chars).
+// Use 1.34 — older code used 1.36 which under-rejected by ~1.5%.
+const BASE64_OVERHEAD = 1.34;
+// Hard cap on the entire request body. iOS sends JSON of the form
+// { "image_base64": "<base64>", "voice_context": "..." } so the worst case
+// is ~2 MB of base64 + ~600 chars of voice context + JSON envelope.
+const MAX_REQUEST_BYTES = Math.ceil(MAX_IMAGE_BYTES * BASE64_OVERHEAD) + 4096;
 
 const SYSTEM_PROMPT = `You are VoCal's photo-parsing engine. The user submits
 a photo of a meal — sometimes with optional voice context describing what's
@@ -84,17 +91,29 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Pre-flight size check: refuse before parsing the body to keep a malicious
+  // 50MB upload from forcing a giant string allocation in the worker.
+  const contentLength = Number(request.headers.get("content-length") || "0");
+  if (contentLength && contentLength > MAX_REQUEST_BYTES) {
+    return json({ error: "Image too large; resize to ~1.5MB before posting" }, 413);
+  }
   let payload: PhotoParseRequest;
   try {
     payload = (await request.json()) as PhotoParseRequest;
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
   }
-  const b64 = (payload.image_base64 ?? "").replace(/^data:image\/\w+;base64,/, "");
+  const b64 = (payload.image_base64 ?? "").replace(/^data:image\/[\w+.-]+;base64,/, "");
   if (!b64) return json({ error: "image_base64 required" }, 400);
-  // base64 expands ~33% so 1.5MB binary ≈ 2MB base64. Cap on the source bytes.
-  if (b64.length > MAX_IMAGE_BYTES * 1.36) {
+  // Hard cap on the base64 string itself, in case Content-Length was absent
+  // (chunked transfer or a permissive proxy).
+  if (b64.length > MAX_IMAGE_BYTES * BASE64_OVERHEAD) {
     return json({ error: "Image too large; resize to ~1.5MB before posting" }, 413);
+  }
+  // Cheap base64 sanity check — reject obviously-corrupt input rather than
+  // wasting an LLM call on bytes the provider will reject anyway.
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(b64)) {
+    return json({ error: "image_base64 is not valid base64" }, 400);
   }
   // Vision provider pool: Wafer GLM-5.1 → Gemini Flash (free) → OpenRouter
   // gpt-4o-mini. Configure multiple keys per provider with the *_API_KEYS
@@ -126,7 +145,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     raw = result.content;
     provider = `${result.provider}/${result.model}`;
   } catch (err) {
-    return json({ error: `All vision providers failed. ${(err as Error).message}` }, 502);
+    // Do NOT echo the provider error back to the client — upstream errors
+    // can contain key fragments, internal hostnames, or stack frames.
+    // Log it for observability (Workers logs) and return a generic 502.
+    console.error("photo/parse provider failure", (err as Error).message);
+    return json({ error: "All vision providers are unavailable. Try again or describe your meal by voice." }, 502);
   }
 
   const parsed = safeJson<LLMMealOutput>(raw);
@@ -185,10 +208,35 @@ function safeJson<T>(raw: string): T | null {
   const candidates: string[] = [];
   if (fenced?.[1]) candidates.push(fenced[1]);
   candidates.push(raw);
-  const objMatch = raw.match(/\{[\s\S]*\}/);
-  if (objMatch) candidates.push(objMatch[0]);
+  // Brace-balanced extraction — see foodParser.safeJson for the rationale.
+  const balanced = extractBalancedObject(raw);
+  if (balanced) candidates.push(balanced);
   for (const c of candidates) {
     try { return JSON.parse(c) as T; } catch { /* try next */ }
+  }
+  return null;
+}
+
+function extractBalancedObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (escape) { escape = false; continue; }
+      if (c === "\\") { escape = true; continue; }
+      if (c === '"') { inStr = false; continue; }
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") { depth++; continue; }
+    if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
   }
   return null;
 }

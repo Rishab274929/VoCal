@@ -84,21 +84,45 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json({ error: `Token verification failed: ${(err as Error).message}` }, 502);
   }
 
-  if (!ALLOWED_ISSUERS.has(info.iss)) {
-    return json({ error: `Untrusted issuer: ${info.iss}` }, 401);
+  if (!info.iss || !ALLOWED_ISSUERS.has(info.iss)) {
+    return json({ error: "Untrusted issuer" }, 401);
   }
-  if (parseInt(info.exp, 10) * 1000 < Date.now()) {
-    return json({ error: "id_token expired" }, 401);
+  // Google's tokeninfo returns exp as a numeric string. Parse strictly —
+  // an undefined/NaN value previously passed the comparison (`NaN < now`
+  // is false), which would let an expired-or-malformed token through.
+  const expSec = info.exp ? parseInt(info.exp, 10) : NaN;
+  if (!isFinite(expSec) || expSec <= 0 || expSec * 1000 < Date.now()) {
+    return json({ error: "id_token expired or missing exp" }, 401);
+  }
+  if (!info.sub || typeof info.sub !== "string") {
+    return json({ error: "id_token missing sub" }, 401);
+  }
+  // Reject unverified emails — without this an attacker can use a fresh
+  // Google account with an unverified email to claim someone else's address
+  // for the side-channel join (display name etc.).
+  if (info.email && info.email_verified !== "true" && info.email_verified !== undefined) {
+    // email_verified is "true"/"false" string per Google docs. Only reject
+    // when it's explicitly "false".
+    if (info.email_verified === "false") {
+      return json({ error: "Email not verified by Google" }, 401);
+    }
   }
 
   // Audience must match one of our configured client IDs (iOS, Android, web).
+  // SECURITY: if NONE are configured, refuse to issue tokens — otherwise an
+  // attacker with any Google ID token (issued for any third-party app) can
+  // mint a VoCal session.
   const allowedAudiences = [
     env.GOOGLE_CLIENT_ID_IOS,
     env.GOOGLE_CLIENT_ID_ANDROID,
     env.GOOGLE_CLIENT_ID_WEB
   ].filter((s): s is string => typeof s === "string" && s.length > 0);
-  if (allowedAudiences.length > 0 && !allowedAudiences.includes(info.aud)) {
-    return json({ error: `Untrusted audience: ${info.aud}` }, 401);
+  if (allowedAudiences.length === 0) {
+    console.error("google auth: refusing to verify — no GOOGLE_CLIENT_ID_* configured");
+    return json({ error: "Server not configured for Google sign-in" }, 503);
+  }
+  if (!info.aud || !allowedAudiences.includes(info.aud)) {
+    return json({ error: "Untrusted audience" }, 401);
   }
 
   // --- Upsert into D1 ---
@@ -127,7 +151,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // --- Issue our JWT ---
   // Longer-lived than anonymous (7 days) since the user has a real identity.
   const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
-  const secret = env.JWT_SECRET || "vocal-dev-secret-rotate-in-prod";
+  // SECURITY: refuse to fall back to a hardcoded default in production. If
+  // the deploy forgets JWT_SECRET, anyone who has read this source can mint
+  // valid tokens for any user. We still keep a recognizable dev default for
+  // local `wrangler pages dev` where there's no DB attached.
+  let secret = env.JWT_SECRET;
+  if (!secret || secret.length < 16) {
+    // No DB binding ≈ local dev; allow the default. Otherwise refuse.
+    if (env.DB) {
+      console.error("auth/google: refusing to sign — JWT_SECRET missing or weak");
+      return json({ error: "Server auth misconfigured" }, 503);
+    }
+    secret = "vocal-dev-secret-rotate-in-prod";
+  }
   const token = await signJWT(
     { sub: userId, provider: "google", email: info.email, google_sub: info.sub },
     secret,
