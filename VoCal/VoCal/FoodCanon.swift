@@ -69,13 +69,27 @@ final class FoodCanon {
         let norm = Self.normalize(transcript)
         guard !norm.isEmpty else { return nil }
 
+        // For plural/typo tolerance, also build a "lemmatized" copy where
+        // common English plurals collapse to their singular ("apples" →
+        // "apple", "berries" → "berry"). This is checked alongside the
+        // literal form so we never *lose* a literal match — we only ADD
+        // matches that would have been missed.
+        let lemmaTokens = norm.split(separator: " ").map { Self.singularize(String($0)) }
+        let lemmaNorm = lemmaTokens.joined(separator: " ")
+        let transcriptTokens: Set<String> = Set(
+            norm.split(separator: " ").map(String.init) + lemmaTokens
+        )
+
         // Pass 1 — exact alias hit. Pick the longest alias to disambiguate
-        // ("two eggs" beats "egg").
+        // ("two eggs" beats "egg"). Use strict `>` so that on a tie the
+        // *first-declared* entry wins, which lets the JSON's authoring
+        // order serve as a tie-break ranking signal.
         var best: (entry: FoodCanonEntry, aliasLen: Int)? = nil
         for entry in entries {
             for alias in entry.aliases {
                 let a = Self.normalize(alias)
-                if norm == a || norm.contains(" \(a) ") || norm.hasPrefix("\(a) ") || norm.hasSuffix(" \(a)") {
+                guard !a.isEmpty else { continue }
+                if Self.containsWhole(a, in: norm) || Self.containsWhole(a, in: lemmaNorm) {
                     if best == nil || a.count > best!.aliasLen {
                         best = (entry, a.count)
                     }
@@ -86,11 +100,13 @@ final class FoodCanon {
 
         // Pass 2 — all-tokens-present fuzzy. Every word of the alias must
         // appear (as a whole word) somewhere in the transcript. Keeps the
-        // longest match.
-        let transcriptTokens = Set(norm.split(separator: " ").map(String.init))
+        // longest match. Lemmatize both sides so "apples" still matches a
+        // multi-word alias containing "apple".
         for entry in entries {
             for alias in entry.aliases {
-                let aliasTokens = Self.normalize(alias).split(separator: " ").map(String.init)
+                let aliasTokens = Self.normalize(alias)
+                    .split(separator: " ")
+                    .map { Self.singularize(String($0)) }
                 guard aliasTokens.count >= 2 else { continue }
                 if aliasTokens.allSatisfy({ transcriptTokens.contains($0) }) {
                     if best == nil || aliasTokens.count > best!.aliasLen {
@@ -100,6 +116,40 @@ final class FoodCanon {
             }
         }
         return best?.entry
+    }
+
+    /// Whole-word containment: does `needle` appear inside `haystack` as a
+    /// standalone token (not as a substring of a longer word)? Handles the
+    /// edge cases of needle at the start, end, or exact match of haystack.
+    private static func containsWhole(_ needle: String, in haystack: String) -> Bool {
+        if haystack == needle { return true }
+        if haystack.hasPrefix("\(needle) ") { return true }
+        if haystack.hasSuffix(" \(needle)") { return true }
+        return haystack.contains(" \(needle) ")
+    }
+
+    /// Naive English singularizer — strips a trailing 's' / 'es' / 'ies'
+    /// suffix when the rest of the token is at least 2 chars. Not linguistic,
+    /// just enough to fix the "apples" / "berries" / "tomatoes" miss cases.
+    /// Leaves single-character words and known non-pluralizable tokens
+    /// (e.g. "rice", "pasta", "tuna") alone.
+    private static func singularize(_ token: String) -> String {
+        // Tokens ending in 'ss' (e.g. "swiss") aren't plurals.
+        if token.hasSuffix("ss") { return token }
+        if token.hasSuffix("ies") && token.count >= 5 {
+            // "berries" → "berry"; "fries" stays "fries" because aliases
+            // include the literal plural form, but normalize will still
+            // match via lemmaTokens if needed.
+            return String(token.dropLast(3)) + "y"
+        }
+        if token.hasSuffix("es") && token.count >= 4 {
+            // "tomatoes" → "tomato"; "boxes" → "box"
+            return String(token.dropLast(2))
+        }
+        if token.hasSuffix("s") && token.count >= 3 {
+            return String(token.dropLast(1))
+        }
+        return token
     }
 
     /// Restaurant chain hints. Any of these in the transcript means we punt

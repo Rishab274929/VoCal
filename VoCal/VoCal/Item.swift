@@ -172,9 +172,46 @@ final class AppModel: ObservableObject {
 
     /// Build an AppModel from disk if we have a saved state, otherwise from
     /// a clean empty state. The entry point used by `VoCalApp` at launch.
+    ///
+    /// Day-rollover guard: if the persisted snapshot was last written on a
+    /// prior calendar day, we zero the *eaten* macros while preserving the
+    /// *goals* + meals history. Without this, opening the app at 12:01 AM
+    /// would show yesterday's calorie ring as still "1,180 / 2,200" instead
+    /// of resetting to today's "0 / 2,200".
     static func fromPersistedOrEmpty() -> AppModel {
-        let snap = Persistence.load() ?? AppStateSnapshot.empty()
-        return AppModel(snapshot: snap)
+        var snap = Persistence.load() ?? AppStateSnapshot.empty()
+        var rolledOver = false
+        if !Calendar.current.isDateInToday(snap.totals.date) {
+            snap.totals.date = .now
+            snap.totals.caloriesEaten = 0
+            snap.totals.proteinEaten = 0
+            snap.totals.carbsEaten = 0
+            snap.totals.fatEaten = 0
+            rolledOver = true
+        }
+        let model = AppModel(snapshot: snap)
+        // Only flush back to disk when we actually changed something. Avoids
+        // a needless write on every cold launch when the user just opens the
+        // app multiple times in the same day.
+        if rolledOver { model.persist() }
+        return model
+    }
+
+    /// Reset eaten macros if the day has flipped since the last update.
+    /// Call this from `.task` or `.onChange(of: scenePhase)` so a phone
+    /// left on overnight rolls over the next time the user opens the app.
+    /// Returns `true` if a rollover happened.
+    @discardableResult
+    func rolloverIfNewDay() -> Bool {
+        guard !Calendar.current.isDateInToday(totals.date) else { return false }
+        totals.date = .now
+        totals.caloriesEaten = 0
+        totals.proteinEaten = 0
+        totals.carbsEaten = 0
+        totals.fatEaten = 0
+        DailyMacrosSnapshot.write(from: totals)
+        persist()
+        return true
     }
 
     /// Serialize the current state and write it to disk. Called automatically
@@ -193,15 +230,37 @@ final class AppModel: ObservableObject {
         Persistence.save(snapshot)
     }
 
+    /// Idempotency window — the cooldown between accepting two saves of the
+    /// same logical meal. Anything inside this window is treated as a
+    /// double-tap on the save button. Keep this >= one human reaction (~0.5s)
+    /// but well under "I had two of those" cadence (~5s).
+    private static let dedupeWindow: TimeInterval = 2
+
+    /// Wall-clock instant of the last accepted `addMeal`. Used to detect a
+    /// double-tap on Save independent of the meal's `loggedAt` (which the
+    /// caller may backdate for a historical entry).
+    private var lastAddMealAt: Date?
+
     func addMeal(_ meal: MealEntry) {
-        // Idempotency: ignore a save with the same name+kcal that arrived within
-        // 2s of the last save. Prevents double-taps on Save from logging twice
-        // and writing duplicate HealthKit samples.
-        if let recent = meals.first,
-           recent.name == meal.name,
-           recent.calories == meal.calories,
-           abs(recent.loggedAt.timeIntervalSince(meal.loggedAt)) < 2 {
-            return
+        // Idempotency: ignore a save with the same name+kcal that arrived
+        // within `dedupeWindow` seconds of the previous accepted save. We
+        // compare wall-clock-now to `lastAddMealAt` (not to `meal.loggedAt`)
+        // because `loggedAt` can be backdated for historical entries — a
+        // user-initiated "I forgot to log this morning's banana" should NOT
+        // be silently swallowed even if its name+kcal happen to match the
+        // last save.
+        //
+        // Also scan the top 3 of `meals` rather than just `meals.first`
+        // because `meals` is sorted by *insertion order*, not `loggedAt`. A
+        // recently-backdated entry can sit at index 0 with an old
+        // `loggedAt`, so checking only `meals.first` would let a double-tap
+        // slip through.
+        let now = Date.now
+        if let last = lastAddMealAt, now.timeIntervalSince(last) < Self.dedupeWindow {
+            let recentSlice = meals.prefix(3)
+            if recentSlice.contains(where: { $0.name == meal.name && $0.calories == meal.calories }) {
+                return
+            }
         }
         meals.insert(meal, at: 0)
         totals.caloriesEaten += meal.calories
@@ -209,6 +268,7 @@ final class AppModel: ObservableObject {
         totals.carbsEaten += meal.carbs
         totals.fatEaten += meal.fat
         lastSavedMeal = meal
+        lastAddMealAt = now
         DailyMacrosSnapshot.write(from: totals)
         persist()
 
@@ -291,6 +351,24 @@ struct DailyMacrosSnapshot: Codable, Sendable {
 
     static let defaultsKey = "vocal.dailyMacrosSnapshot.v1"
 
+    /// Shared encoder/decoder pair. Both pin to ISO 8601 dates so the on-disk
+    /// format matches `Persistence` and is greppable from `xcrun simctl
+    /// spawn ... defaults read` during demos. Using `JSONEncoder()` with no
+    /// strategy on one side and `.iso8601` on the other (the bug this
+    /// replaces) would still round-trip — both sides are paired — but it
+    /// quietly broke any external tooling that tried to inspect the value.
+    private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
     nonisolated static func write(from totals: DailyTotals) {
         let snap = DailyMacrosSnapshot(
             date: totals.date,
@@ -303,14 +381,14 @@ struct DailyMacrosSnapshot: Codable, Sendable {
             fatGoal: totals.fatGoal,
             fatEaten: totals.fatEaten
         )
-        if let data = try? JSONEncoder().encode(snap) {
+        if let data = try? encoder.encode(snap) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
     }
 
     nonisolated static func read() -> DailyMacrosSnapshot? {
         guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let snap = try? JSONDecoder().decode(DailyMacrosSnapshot.self, from: data) else {
+              let snap = try? decoder.decode(DailyMacrosSnapshot.self, from: data) else {
             return nil
         }
         // Stale-day guard: if the snapshot isn't from today, the intent should

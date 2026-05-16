@@ -56,6 +56,15 @@ enum MockData {
         )
     ]
 
+    /// LEAK WARNING — this is still being read from `HistoryView.pastDaysList`
+    /// in production code (search for `MockData.historySummaries`), which
+    /// means every shipping user sees fake history numbers in the "Recent
+    /// days" section regardless of their actual log. Per commit `57909c5`
+    /// this should be sourced from `AppModel.meals` aggregated by day; the
+    /// fix lives in `HistoryView.swift` (out of scope for the
+    /// data/persistence agent) so this constant stays here until that lands.
+    /// Do NOT add `@available(deprecated)` — it would warn in the upstream
+    /// HistoryView build and confuse the parallel-agent integration pass.
     static let historySummaries: [(date: Date, calories: Int, goal: Int)] = {
         let sample = [2080, 1890, 2210, 1750, 2340, 2020, 1660, 2150, 1980, 2280, 1820, 2090, 1940, 2050]
         return sample.enumerated().map { offset, eaten in

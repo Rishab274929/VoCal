@@ -34,6 +34,14 @@ struct AppStateSnapshot: Codable {
 enum Persistence {
     private static let fileName = "vocal_state.v1.json"
 
+    /// Dedicated serial queue for disk I/O. Keeps writes off the main thread
+    /// (so a save in `AppModel.addMeal` doesn't stall the calorie-ring
+    /// animation) AND serializes them — if two saves arrive back-to-back
+    /// they execute in order, never racing the atomic-rename step.
+    private static let ioQueue = DispatchQueue(
+        label: "best.vocal.persistence", qos: .utility
+    )
+
     /// Returns the URL inside the app's Documents directory. Documents persists
     /// across launches and is included in iCloud Drive backups by default.
     private static func fileURL() -> URL? {
@@ -46,17 +54,34 @@ enum Persistence {
 
     /// Writes a snapshot. Best-effort — failures are logged via `print` and
     /// otherwise swallowed; we never want a save error to break a save flow.
+    ///
+    /// Encoding happens *synchronously* on the calling actor so the snapshot
+    /// observed-at-call-time is what hits disk (no race with subsequent
+    /// mutations). The actual file write hops to `ioQueue` so the caller
+    /// doesn't pay for fsync on the main thread — important once `meals`
+    /// grows past a few hundred entries.
     static func save(_ snapshot: AppStateSnapshot) {
         guard let url = fileURL() else { return }
+        let encoder = JSONEncoder()
+        // sortedKeys keeps diffs readable; pretty-printing dropped to keep
+        // writes small once meals[] gets long (10k meals ≈ ~3 MB pretty vs
+        // ~1.5 MB compact).
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data: Data
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(snapshot)
-            // Atomic write so a crash mid-save doesn't leave a half-written file.
-            try data.write(to: url, options: [.atomic, .completeFileProtection])
+            data = try encoder.encode(snapshot)
         } catch {
-            print("[VoCal.Persistence] save failed: \(error)")
+            print("[VoCal.Persistence] encode failed: \(error)")
+            return
+        }
+        ioQueue.async {
+            do {
+                // Atomic write so a crash mid-save doesn't leave a half-written file.
+                try data.write(to: url, options: [.atomic, .completeFileProtection])
+            } catch {
+                print("[VoCal.Persistence] save failed: \(error)")
+            }
         }
     }
 
@@ -75,10 +100,13 @@ enum Persistence {
     }
 
     /// Removes the persisted state. Useful for "Sign out" / reset flows.
-    /// No-op if no file exists.
+    /// No-op if no file exists. Blocks until the IO queue drains so a
+    /// subsequent `load()` doesn't race a still-pending `save()`.
     static func clear() {
         guard let url = fileURL() else { return }
-        try? FileManager.default.removeItem(at: url)
+        ioQueue.sync {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
 
