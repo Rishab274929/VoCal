@@ -127,6 +127,17 @@ struct VoCalShortcuts: AppShortcutsProvider {
 
 enum VoiceParseAPI {
     static func parse(transcript: String, followUp: String? = nil) async throws -> VoiceParseResponse {
+        // Tier 0: on-device canon. Resolves common foods instantly so Siri
+        // can answer without a network round-trip when possible.
+        if followUp == nil, let hit = FoodCanon.shared.lookup(transcript) {
+            return VoiceParseResponse(
+                transcript: transcript,
+                follow_up_question: nil,
+                meal: hit.asParsedMeal(transcript: transcript),
+                reasoning: "Matched on-device canon (\(hit.name))."
+            )
+        }
+
         let baseURL = ProcessInfo.processInfo.environment["VOCAL_API_BASE_URL"] ?? "https://vocal.best/api"
         guard let endpoint = URL(string: "\(baseURL)/voice/parse") else {
             throw URLError(.badURL)

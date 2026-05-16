@@ -350,6 +350,17 @@ struct VoiceCaptureSheet: View {
 
         let payloadTranscript = transcriptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Tier 0: on-device canon. Resolves whole foods + common prepared
+        // items instantly without any network call. Only used when there is
+        // no follow-up answer — once we're mid-clarification the backend
+        // should own the resolution.
+        if followUp == nil, let hit = FoodCanon.shared.lookup(payloadTranscript) {
+            let meal = hit.asParsedMeal(transcript: payloadTranscript)
+            parseReasoning = "Matched on-device canon (\(hit.name))."
+            applyParsedMeal(meal, transcript: payloadTranscript)
+            return
+        }
+
         do {
             let response = try await VoiceAPIClient.parseMeal(transcript: payloadTranscript, followUpAnswer: followUp)
             parseReasoning = response.reasoning
