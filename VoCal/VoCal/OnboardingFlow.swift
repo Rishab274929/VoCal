@@ -107,6 +107,69 @@ struct OnboardingFlow: View {
                 examplePill("Chipotle bowl, double chicken, guac")
             }
             .padding(.top, 22)
+
+            googleSignInRow
+                .padding(.top, 12)
+        }
+    }
+
+    /// Sign-in-with-Google row. Optional — anonymous flow still works if
+    /// the user skips. Shown on the pitch step so account creation happens
+    /// once, before they invest in any data entry.
+    @State private var signingIn = false
+    @State private var signInError: String?
+
+    @ViewBuilder
+    private var googleSignInRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await signInWithGoogle() }
+            } label: {
+                HStack(spacing: 10) {
+                    if signingIn {
+                        ProgressView().controlSize(.small).tint(Theme.Palette.ink)
+                    } else {
+                        Image(systemName: "g.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Theme.Palette.ink)
+                    }
+                    Text(signingIn ? "Opening Google…" : "Sign in with Google")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.Palette.ink)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(Capsule().fill(Theme.Palette.bone))
+            }
+            .buttonStyle(.plain)
+            .disabled(signingIn)
+
+            if let err = signInError {
+                Text(err)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Palette.pulse)
+            }
+            Text("Optional. Skip and we'll keep your data device-only.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.smoke)
+        }
+    }
+
+    private func signInWithGoogle() async {
+        signingIn = true
+        defer { signingIn = false }
+        do {
+            try await AuthSession.shared.signInWithGoogle()
+            signInError = nil
+            // Pre-fill the name field if Google gave us one — saves a step.
+            if let displayName = AuthSession.shared.displayName, name.isEmpty {
+                name = displayName.split(separator: " ").first.map(String.init) ?? displayName
+            }
+        } catch GoogleSignIn.Error.userCancelled {
+            // No-op — user dismissed the sheet.
+        } catch {
+            signInError = error.localizedDescription
         }
     }
 

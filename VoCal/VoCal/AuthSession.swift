@@ -21,15 +21,25 @@ import Combine
 final class AuthSession: ObservableObject {
     static let shared = AuthSession()
 
+    enum Provider: String, Codable { case anonymous, google }
+
     private struct Snapshot: Codable {
         let userID: String
         let token: String
         let expiresAt: Date
         let deviceID: String
+        var provider: Provider = .anonymous
+        var email: String?
+        var displayName: String?
+        var pictureURL: String?
     }
 
     @Published private(set) var userID: String?
     @Published private(set) var isAuthenticated = false
+    @Published private(set) var provider: Provider = .anonymous
+    @Published private(set) var email: String?
+    @Published private(set) var displayName: String?
+    @Published private(set) var pictureURL: String?
 
     private var current: Snapshot?
     private var pendingFetch: Task<Snapshot, Error>?
@@ -38,10 +48,39 @@ final class AuthSession: ObservableObject {
         if let loaded: Snapshot = Keychain.load(key: Self.keychainKey) {
             self.current = loaded
             self.userID = loaded.userID
+            self.provider = loaded.provider
+            self.email = loaded.email
+            self.displayName = loaded.displayName
+            self.pictureURL = loaded.pictureURL
             // Treat the session as authenticated even if the JWT is past
             // its expiry — we'll refresh lazily on the next backend call.
             self.isAuthenticated = true
         }
+    }
+
+    /// Trade a Google ID token for our backend JWT. Once this succeeds the
+    /// session is "upgraded" from anonymous to a signed-in Google user;
+    /// subsequent backend calls authenticate as that user.
+    func signInWithGoogle() async throws {
+        let resp = try await GoogleSignIn.shared.signIn()
+        let snap = Snapshot(
+            userID: resp.user_id,
+            token: resp.token,
+            expiresAt: Date(timeIntervalSince1970: TimeInterval(resp.expires_at) / 1000),
+            deviceID: current?.deviceID ?? Self.loadOrCreateDeviceID(),
+            provider: .google,
+            email: resp.email,
+            displayName: resp.name,
+            pictureURL: resp.picture
+        )
+        current = snap
+        userID = snap.userID
+        provider = .google
+        email = snap.email
+        displayName = snap.displayName
+        pictureURL = snap.pictureURL
+        isAuthenticated = true
+        Keychain.save(snap, key: Self.keychainKey)
     }
 
     // MARK: - Public surface
@@ -65,11 +104,14 @@ final class AuthSession: ObservableObject {
     }
 
     /// Erase the local session. Next request will create a fresh anon user.
-    /// Used by sign-out flows once SiwA lands.
     func signOut() {
         Keychain.delete(key: Self.keychainKey)
         current = nil
         userID = nil
+        provider = .anonymous
+        email = nil
+        displayName = nil
+        pictureURL = nil
         isAuthenticated = false
     }
 
@@ -123,7 +165,11 @@ final class AuthSession: ObservableObject {
             userID: parsed.user_id,
             token: parsed.token,
             expiresAt: Date(timeIntervalSince1970: TimeInterval(parsed.expires_at) / 1000),
-            deviceID: deviceID
+            deviceID: deviceID,
+            provider: .anonymous,
+            email: nil,
+            displayName: nil,
+            pictureURL: nil
         )
     }
 
