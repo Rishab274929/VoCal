@@ -1,0 +1,597 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		0774B5552FB8DB5900C8E991 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0774B53D2FB8DB5800C8E991 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0774B5442FB8DB5800C8E991;
+			remoteInfo = VoCal;
+		};
+		0774B55F2FB8DB5900C8E991 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0774B53D2FB8DB5800C8E991 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0774B5442FB8DB5800C8E991;
+			remoteInfo = VoCal;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0774B5452FB8DB5800C8E991 /* VoCal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoCal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0774B5542FB8DB5900C8E991 /* VoCalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoCalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0774B55E2FB8DB5900C8E991 /* VoCalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoCalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0774B5472FB8DB5800C8E991 /* VoCal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoCal;
+			sourceTree = "<group>";
+		};
+		0774B5572FB8DB5900C8E991 /* VoCalTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoCalTests;
+			sourceTree = "<group>";
+		};
+		0774B5612FB8DB5900C8E991 /* VoCalUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoCalUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0774B5422FB8DB5800C8E991 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B5512FB8DB5900C8E991 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B55B2FB8DB5900C8E991 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0774B53C2FB8DB5800C8E991 = {
+			isa = PBXGroup;
+			children = (
+				0774B5472FB8DB5800C8E991 /* VoCal */,
+				0774B5572FB8DB5900C8E991 /* VoCalTests */,
+				0774B5612FB8DB5900C8E991 /* VoCalUITests */,
+				0774B5462FB8DB5800C8E991 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0774B5462FB8DB5800C8E991 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0774B5452FB8DB5800C8E991 /* VoCal.app */,
+				0774B5542FB8DB5900C8E991 /* VoCalTests.xctest */,
+				0774B55E2FB8DB5900C8E991 /* VoCalUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0774B5442FB8DB5800C8E991 /* VoCal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0774B5682FB8DB5900C8E991 /* Build configuration list for PBXNativeTarget "VoCal" */;
+			buildPhases = (
+				0774B5412FB8DB5800C8E991 /* Sources */,
+				0774B5422FB8DB5800C8E991 /* Frameworks */,
+				0774B5432FB8DB5800C8E991 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0774B5472FB8DB5800C8E991 /* VoCal */,
+			);
+			name = VoCal;
+			packageProductDependencies = (
+			);
+			productName = VoCal;
+			productReference = 0774B5452FB8DB5800C8E991 /* VoCal.app */;
+			productType = "com.apple.product-type.application";
+		};
+		0774B5532FB8DB5900C8E991 /* VoCalTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0774B56B2FB8DB5900C8E991 /* Build configuration list for PBXNativeTarget "VoCalTests" */;
+			buildPhases = (
+				0774B5502FB8DB5900C8E991 /* Sources */,
+				0774B5512FB8DB5900C8E991 /* Frameworks */,
+				0774B5522FB8DB5900C8E991 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0774B5562FB8DB5900C8E991 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0774B5572FB8DB5900C8E991 /* VoCalTests */,
+			);
+			name = VoCalTests;
+			packageProductDependencies = (
+			);
+			productName = VoCalTests;
+			productReference = 0774B5542FB8DB5900C8E991 /* VoCalTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		0774B55D2FB8DB5900C8E991 /* VoCalUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0774B56E2FB8DB5900C8E991 /* Build configuration list for PBXNativeTarget "VoCalUITests" */;
+			buildPhases = (
+				0774B55A2FB8DB5900C8E991 /* Sources */,
+				0774B55B2FB8DB5900C8E991 /* Frameworks */,
+				0774B55C2FB8DB5900C8E991 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0774B5602FB8DB5900C8E991 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0774B5612FB8DB5900C8E991 /* VoCalUITests */,
+			);
+			name = VoCalUITests;
+			packageProductDependencies = (
+			);
+			productName = VoCalUITests;
+			productReference = 0774B55E2FB8DB5900C8E991 /* VoCalUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0774B53D2FB8DB5800C8E991 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					0774B5442FB8DB5800C8E991 = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
+					0774B5532FB8DB5900C8E991 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = 0774B5442FB8DB5800C8E991;
+					};
+					0774B55D2FB8DB5900C8E991 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = 0774B5442FB8DB5800C8E991;
+					};
+				};
+			};
+			buildConfigurationList = 0774B5402FB8DB5800C8E991 /* Build configuration list for PBXProject "VoCal" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0774B53C2FB8DB5800C8E991;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0774B5462FB8DB5800C8E991 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0774B5442FB8DB5800C8E991 /* VoCal */,
+				0774B5532FB8DB5900C8E991 /* VoCalTests */,
+				0774B55D2FB8DB5900C8E991 /* VoCalUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0774B5432FB8DB5800C8E991 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B5522FB8DB5900C8E991 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B55C2FB8DB5900C8E991 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0774B5412FB8DB5800C8E991 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B5502FB8DB5900C8E991 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B55A2FB8DB5900C8E991 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0774B5562FB8DB5900C8E991 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0774B5442FB8DB5800C8E991 /* VoCal */;
+			targetProxy = 0774B5552FB8DB5900C8E991 /* PBXContainerItemProxy */;
+		};
+		0774B5602FB8DB5900C8E991 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0774B5442FB8DB5800C8E991 /* VoCal */;
+			targetProxy = 0774B55F2FB8DB5900C8E991 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0774B5662FB8DB5900C8E991 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		0774B5672FB8DB5900C8E991 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		0774B5692FB8DB5900C8E991 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "VoCal uses the camera to fact-check your meals and capture body photos for body-fat estimates.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "VoCal can read your steps and active energy to nudge your daily calorie target.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "VoCal writes your logged calories and macros to Apple Health.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoCal listens when you tap the mic so you can log meals by voice.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Optionally add a photo of your meal from your library.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "VoCal turns your spoken meals into structured calorie and macro logs.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0774B56A2FB8DB5900C8E991 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "VoCal uses the camera to fact-check your meals and capture body photos for body-fat estimates.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "VoCal can read your steps and active energy to nudge your daily calorie target.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "VoCal writes your logged calories and macros to Apple Health.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoCal listens when you tap the mic so you can log meals by voice.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Optionally add a photo of your meal from your library.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "VoCal turns your spoken meals into structured calorie and macro logs.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		0774B56C2FB8DB5900C8E991 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCalTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoCal.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VoCal";
+			};
+			name = Debug;
+		};
+		0774B56D2FB8DB5900C8E991 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCalTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoCal.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VoCal";
+			};
+			name = Release;
+		};
+		0774B56F2FB8DB5900C8E991 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCalUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VoCal;
+			};
+			name = Debug;
+		};
+		0774B5702FB8DB5900C8E991 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCalUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VoCal;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0774B5402FB8DB5800C8E991 /* Build configuration list for PBXProject "VoCal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0774B5662FB8DB5900C8E991 /* Debug */,
+				0774B5672FB8DB5900C8E991 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0774B5682FB8DB5900C8E991 /* Build configuration list for PBXNativeTarget "VoCal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0774B5692FB8DB5900C8E991 /* Debug */,
+				0774B56A2FB8DB5900C8E991 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0774B56B2FB8DB5900C8E991 /* Build configuration list for PBXNativeTarget "VoCalTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0774B56C2FB8DB5900C8E991 /* Debug */,
+				0774B56D2FB8DB5900C8E991 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0774B56E2FB8DB5900C8E991 /* Build configuration list for PBXNativeTarget "VoCalUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0774B56F2FB8DB5900C8E991 /* Debug */,
+				0774B5702FB8DB5900C8E991 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0774B53D2FB8DB5800C8E991 /* Project object */;
+}
