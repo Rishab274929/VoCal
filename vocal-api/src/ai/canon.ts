@@ -27,7 +27,17 @@ export const CHAIN_CANON: Chain[] = [
     matchBrand: ["mcdonald", "mcdonalds", "mcd"],
     items: [
       {
-        match: [["fr", "med"], ["fries", "medium"], ["fry"]],
+        match: [["fries", "large"], ["fry", "large"], ["large", "fr"]],
+        meal: { name: "McDonald's French Fries (Large)", detail: "Chain menu match", kcal: 480, protein_g: 7, carbs_g: 66, fat_g: 23 },
+        defaultSlot: "snack"
+      },
+      {
+        match: [["fries", "small"], ["fry", "small"], ["small", "fr"]],
+        meal: { name: "McDonald's French Fries (Small)", detail: "Chain menu match", kcal: 230, protein_g: 3, carbs_g: 31, fat_g: 11 },
+        defaultSlot: "snack"
+      },
+      {
+        match: [["fr", "med"], ["fries", "medium"], ["fries"], ["fry"]],
         meal: { name: "McDonald's French Fries (Medium)", detail: "Chain menu match", kcal: 320, protein_g: 4, carbs_g: 43, fat_g: 15 },
         defaultSlot: "snack"
       },

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy — VoCal</title>
+    <meta name="theme-color" content="#0A0A0B" />
+    <link rel="stylesheet" href="/_shared.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/" style="text-decoration: none;">
+        <div class="wordmark"><span class="vo">Vo</span><span class="cal">Cal</span></div>
+      </a>
+      <nav><a href="/">← Home</a></nav>
+    </header>
+
+    <main>
+      <div class="eyebrow eyebrow-pulse">Privacy policy</div>
+      <h1>Your data, in plain English.</h1>
+      <p>Last updated <strong>May 16, 2026</strong>.</p>
+
+      <div class="card">
+        <strong>TL;DR.</strong> Your voice, your photos, your meals belong to you. We use them
+        to make VoCal work. We don't sell them, we don't ad-target on them, and you can delete
+        everything in one tap.
+      </div>
+
+      <h2>What we collect</h2>
+      <ul>
+        <li><strong>Meals you log</strong> — name, macros, time, source (voice / photo / manual).</li>
+        <li><strong>Voice transcripts</strong> — the text we get back from on-device speech recognition. We use this only to parse the meal.</li>
+        <li><strong>Meal photos</strong> — only if you snap one. Auto-deleted after 30 days unless you opt in to keep.</li>
+        <li><strong>Body photos</strong> — for the body-fat estimate. Encrypted at rest with a per-user key. Kept 90 days max.</li>
+        <li><strong>Apple Sign-in</strong> — your Apple subject identifier (an opaque string), not your real email unless you choose to share it.</li>
+        <li><strong>Usage telemetry</strong> — counts of feature taps and crash reports, no content.</li>
+      </ul>
+
+      <h2>What we don't collect</h2>
+      <ul>
+        <li>Your real name, address, or phone number.</li>
+        <li>Contact list, location, or ad identifiers.</li>
+        <li>Anything from Apple Health unless you grant the permission, and even then only the categories listed in the app.</li>
+      </ul>
+
+      <h2>Where it lives</h2>
+      <p>
+        On your device by default, mirrored to a Cloudflare-hosted backend in the United States.
+        Photos live in Cloudflare R2; structured data in Cloudflare D1. We use Anthropic
+        (Claude) and OpenAI to run the AI estimates — transcripts and image features are sent
+        to those providers under their respective privacy commitments.
+      </p>
+
+      <h2>Your controls</h2>
+      <ul>
+        <li><strong>Delete a meal:</strong> swipe left in the log.</li>
+        <li><strong>Delete a photo:</strong> tap the meal, then Photo → Remove.</li>
+        <li><strong>Delete everything:</strong> Profile → Privacy → Delete account. All data wiped within 30 days.</li>
+        <li><strong>Export:</strong> Profile → Privacy → Export. You get a JSON of your meals + a ZIP of your photos.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>VoCal is for 17+. We don't knowingly collect data from younger users.</p>
+
+      <h2>Changes</h2>
+      <p>
+        If we update this policy, we'll surface a notice in the app. Email
+        <strong>privacy@vocal.best</strong> with any concerns.
+      </p>
+    </main>
+
+    <footer>
+      <div>© 2026 VoCal</div>
+      <div>
+        <a href="/terms/">Terms</a>
+        <a href="/support/">Support</a>
+        <a href="/beta/">Beta</a>
+      </div>
+    </footer>
+  </body>
+</html>

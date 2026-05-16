@@ -439,8 +439,7 @@ struct VoiceCaptureSheet: View {
 
 private enum VoiceAPIClient {
     static func parseMeal(transcript: String, followUpAnswer: String?) async throws -> VoiceParseResponse {
-        let baseURL = ProcessInfo.processInfo.environment["VOCAL_API_BASE_URL"] ?? "https://vocal.best/api"
-        guard let endpoint = URL(string: "\(baseURL)/voice/parse") else {
+        guard let endpoint = URL(string: "\(APIConfig.baseURL)/voice/parse") else {
             throw URLError(.badURL)
         }
 

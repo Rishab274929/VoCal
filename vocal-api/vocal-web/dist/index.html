@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoCal — Just say what you ate.</title>
+    <meta name="description" content="The first calorie tracker that actually listens. Speak a meal — even from a chain — and it logs with real macros in seconds." />
+    <meta name="theme-color" content="#0A0A0B" />
+    <meta property="og:title" content="VoCal — Just say what you ate." />
+    <meta property="og:description" content="The first calorie tracker that actually listens. Restaurant items by name. No typing. No scrolling." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://vocal.best/" />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #0A0A0B;
+        --ink-raised: #121214;
+        --ink-surface: #18181C;
+        --hairline: rgba(255,255,255,0.07);
+        --hairline-strong: rgba(255,255,255,0.13);
+        --bone: #F6F4EC;
+        --ash: #BDBBB2;
+        --smoke: #86847B;
+        --voltage: #E5FF59;
+        --voltage-deep: #B7D03A;
+        --pulse: #FF5436;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0;
+        background: var(--ink);
+        color: var(--bone);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        min-height: 100vh;
+      }
+      .serif {
+        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
+        font-feature-settings: "kern", "liga";
+      }
+      .italic { font-style: italic; }
+      .eyebrow {
+        font-size: 10px; font-weight: 600;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--smoke);
+      }
+      .eyebrow-pulse { color: var(--pulse); }
+      a { color: var(--bone); text-decoration: none; }
+      a:hover { color: var(--voltage); }
+
+      body::before {
+        content: "";
+        position: fixed; inset: 0;
+        background:
+          radial-gradient(circle at 15% -10%, rgba(229,255,89,0.10) 0%, transparent 40%),
+          radial-gradient(circle at 90% 5%, rgba(255,84,54,0.06) 0%, transparent 35%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      main, header, footer { position: relative; z-index: 1; }
+
+      header {
+        max-width: 1080px; margin: 0 auto;
+        padding: 28px 32px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px;
+      }
+      .wordmark {
+        font-size: 22px; font-weight: 600;
+        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
+        font-style: italic;
+      }
+      .wordmark .vo { color: var(--bone); }
+      .wordmark .cal { color: var(--voltage); }
+      .nav { display: flex; gap: 22px; align-items: center; font-size: 13px; font-weight: 500; color: var(--ash); }
+      .nav a { color: var(--ash); }
+      .cta {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 10px 18px;
+        border-radius: 999px;
+        background: var(--voltage);
+        color: var(--ink) !important;
+        font-weight: 600; font-size: 13px;
+        transition: transform 0.15s ease;
+      }
+      .cta:hover { color: var(--ink) !important; transform: translateY(-1px); }
+
+      main { max-width: 1080px; margin: 0 auto; padding: 0 32px 80px; }
+
+      .hero { padding: 60px 0 40px; }
+      .hero h1 {
+        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
+        font-weight: 500;
+        font-size: clamp(40px, 7vw, 84px);
+        line-height: 1.02;
+        margin: 18px 0 0;
+        letter-spacing: -0.01em;
+      }
+      .hero h1 .accent { color: var(--voltage); font-style: italic; }
+      .hero p {
+        max-width: 620px; margin: 24px 0 0;
+        font-size: 17px; line-height: 1.5; color: var(--ash);
+      }
+      .hero .actions { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
+      .ghost {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid var(--hairline-strong);
+        font-weight: 600; font-size: 13px;
+        color: var(--bone);
+      }
+      .ghost:hover { border-color: var(--bone); color: var(--bone); }
+
+      .examples {
+        margin: 56px 0 0;
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+      }
+      .example {
+        padding: 16px 18px;
+        border: 1px solid var(--hairline-strong);
+        border-radius: 16px;
+        background: var(--ink-surface);
+        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
+        font-style: italic;
+        font-size: 15px;
+        color: var(--bone);
+        display: flex; align-items: center; gap: 12px;
+      }
+      .example::before {
+        content: "▶";
+        color: var(--voltage);
+        font-size: 9px;
+        font-style: normal;
+      }
+
+      section.wedge { margin: 84px 0 0; }
+      section h2 {
+        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
+        font-weight: 500;
+        font-size: clamp(28px, 4vw, 42px);
+        margin: 14px 0 24px;
+      }
+      .wedge-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1px;
+        background: var(--hairline);
+        border: 1px solid var(--hairline);
+        border-radius: 20px;
+        overflow: hidden;
+      }
+      .wedge-grid > div { background: var(--ink-raised); padding: 22px 18px; }
+      .wedge-grid .head {
+        font-family: "New York", serif;
+        font-weight: 500;
+        font-size: 17px;
+        padding-top: 18px; padding-bottom: 14px;
+      }
+      .wedge-grid .head.us { color: var(--voltage); }
+      .wedge-grid .cell { font-size: 14px; color: var(--ash); line-height: 1.4; }
+      .wedge-grid .cell.us { color: var(--bone); font-weight: 500; }
+      @media (max-width: 720px) { .wedge-grid { grid-template-columns: 1fr; } }
+
+      .steps {
+        display: grid; grid-template-columns: repeat(3, 1fr);
+        gap: 14px; margin-top: 18px;
+      }
+      .step {
+        padding: 22px 20px;
+        border: 1px solid var(--hairline);
+        border-radius: 20px;
+        background: var(--ink-surface);
+      }
+      .step .num {
+        font-family: "New York", serif; font-style: italic;
+        font-size: 36px; color: var(--voltage);
+        line-height: 1; margin-bottom: 14px;
+      }
+      .step h3 {
+        font-family: "New York", serif; font-weight: 500;
+        font-size: 18px; margin: 0 0 6px;
+      }
+      .step p { margin: 0; font-size: 13px; color: var(--ash); line-height: 1.5; }
+      @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
+
+      .cta-strip {
+        margin: 84px 0 0;
+        padding: 40px 32px;
+        border: 1px solid var(--hairline-strong);
+        border-radius: 28px;
+        background: var(--ink-surface);
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 28px; flex-wrap: wrap;
+      }
+      .cta-strip h3 {
+        font-family: "New York", serif; font-weight: 500;
+        font-size: clamp(22px, 3vw, 30px); margin: 0;
+      }
+      .cta-strip p { margin: 6px 0 0; font-size: 14px; color: var(--ash); }
+
+      footer {
+        max-width: 1080px;
+        margin: 80px auto 0;
+        padding: 32px;
+        border-top: 1px solid var(--hairline);
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 16px; flex-wrap: wrap;
+      }
+      footer .links { display: flex; gap: 22px; font-size: 12px; color: var(--ash); }
+      footer .links a { color: var(--ash); }
+      footer .small { font-size: 11px; color: var(--smoke); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wordmark"><span class="vo">Vo</span><span class="cal">Cal</span></div>
+      <nav class="nav">
+        <a href="/beta/">TestFlight</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/support/">Support</a>
+        <a href="/beta/" class="cta">Get the beta →</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow eyebrow-pulse">Introducing</div>
+        <h1>The first calorie tracker that <span class="accent">actually listens.</span></h1>
+        <p>
+          Cal AI needs a photo. MyFitnessPal needs you to type. VoCal just needs you to talk —
+          and it actually knows the McDonald's menu. Speak a meal, even from a chain, and it logs
+          with real macros in seconds.
+        </p>
+        <div class="actions">
+          <a class="cta" href="/beta/">Join the TestFlight →</a>
+          <a class="ghost" href="#how">How it works</a>
+        </div>
+
+        <div class="examples">
+          <div class="example">"medium fry from McDonald's"</div>
+          <div class="example">"grande iced oat latte from Starbucks"</div>
+          <div class="example">"Chipotle bowl, double chicken, guac"</div>
+        </div>
+      </section>
+
+      <section class="wedge">
+        <div class="eyebrow">The wedge</div>
+        <h2>What no one else does.</h2>
+        <div class="wedge-grid">
+          <div class="head">Cal AI</div>
+          <div class="head">MyFitnessPal</div>
+          <div class="head us">VoCal</div>
+
+          <div class="cell">Photo only</div>
+          <div class="cell">Type & scroll</div>
+          <div class="cell us">Speak it — logged in under 3 seconds</div>
+
+          <div class="cell">No restaurant intelligence</div>
+          <div class="cell">Search a database</div>
+          <div class="cell us">Agentic search across chain menus + USDA</div>
+
+          <div class="cell">Can't see hidden food</div>
+          <div class="cell">No automation</div>
+          <div class="cell us">Photo + voice fact-check: "rice underneath?"</div>
+
+          <div class="cell">No coach</div>
+          <div class="cell">Charts only</div>
+          <div class="cell us">Voice nutrition coach you can talk to</div>
+        </div>
+      </section>
+
+      <section id="how">
+        <div class="eyebrow">How it works</div>
+        <h2>Three steps. No typing.</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="num">01</div>
+            <h3>Tap the mic</h3>
+            <p>Say what you ate the way you'd tell a friend. "Medium fry from McDonald's." "Pasta with red sauce, big bowl."</p>
+          </div>
+          <div class="step">
+            <div class="num">02</div>
+            <h3>We resolve it</h3>
+            <p>Agentic search hits the chain menus first, USDA for plain food, web + PDFs for everything else. Real macros, not guesses.</p>
+          </div>
+          <div class="step">
+            <div class="num">03</div>
+            <h3>Logged in seconds</h3>
+            <p>Calorie ring updates, macros tick up, Apple Health syncs. Ask the coach what to eat next.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta-strip">
+        <div>
+          <h3>Just say what you ate.</h3>
+          <p>Join the TestFlight beta. iPhone, iOS 18+.</p>
+        </div>
+        <a class="cta" href="/beta/">Get the beta →</a>
+      </section>
+    </main>
+
+    <footer>
+      <div>
+        <div class="wordmark"><span class="vo">Vo</span><span class="cal">Cal</span></div>
+        <div class="small">© 2026 VoCal. Not a medical device.</div>
+      </div>
+      <div class="links">
+        <a href="/terms/">Terms</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/support/">Support</a>
+        <a href="/beta/">Beta</a>
+      </div>
+    </footer>
+  </body>
+</html>

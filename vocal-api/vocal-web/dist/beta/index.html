@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beta — VoCal</title>
+    <meta name="theme-color" content="#0A0A0B" />
+    <link rel="stylesheet" href="/_shared.css" />
+    <style>
+      .seats {
+        margin: 24px 0 8px;
+        padding: 24px;
+        border: 1px solid var(--voltage);
+        border-radius: 22px;
+        background:
+          radial-gradient(circle at 30% 0%, rgba(229,255,89,0.10) 0%, transparent 50%),
+          var(--ink-surface);
+      }
+      .seats h2 { margin-top: 0; }
+      .badge {
+        display: inline-block;
+        font-size: 9px; font-weight: 700;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        background: var(--voltage); color: var(--ink);
+        padding: 4px 8px; border-radius: 999px;
+      }
+      .stat-row { display: flex; gap: 28px; margin-top: 14px; flex-wrap: wrap; }
+      .stat .num {
+        font-family: "New York", serif; font-weight: 500;
+        font-size: 32px; color: var(--bone);
+      }
+      .stat .lbl {
+        font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--smoke); margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a href="/" style="text-decoration: none;">
+        <div class="wordmark"><span class="vo">Vo</span><span class="cal">Cal</span></div>
+      </a>
+      <nav><a href="/">← Home</a></nav>
+    </header>
+
+    <main>
+      <span class="badge">TestFlight beta</span>
+      <h1>Get the voice-first build.</h1>
+      <p>
+        iPhone, iOS 18+. Apple Watch and Live Activity in the next build. Sandbox subscriptions
+        active so you can test the paywall flow without a card.
+      </p>
+
+      <div class="seats">
+        <h2>What's in the beta</h2>
+        <ul>
+          <li>Voice meal logging — McDonald's, Chipotle, Starbucks, and ~25 chains by name</li>
+          <li>Photo + voice fact-check ("anything underneath I can't see?")</li>
+          <li>Body-fat estimate from a front + side photo</li>
+          <li>Voice nutrition coach that knows your day</li>
+          <li>Apple Health write-back for kcal + macros + weight + body fat</li>
+          <li>Siri shortcut: "Hey Siri, log a meal in VoCal"</li>
+        </ul>
+        <div class="stat-row">
+          <div class="stat"><div class="num">~3s</div><div class="lbl">avg time to log</div></div>
+          <div class="stat"><div class="num">25</div><div class="lbl">chains indexed</div></div>
+          <div class="stat"><div class="num">8k+</div><div class="lbl">USDA foods</div></div>
+        </div>
+      </div>
+
+      <p style="margin-top: 24px;">
+        <a class="cta" href="mailto:beta@vocal.best?subject=VoCal%20TestFlight">
+          Request a TestFlight invite →
+        </a>
+      </p>
+      <p class="small">
+        We'll reply within a day with a link. You'll need the TestFlight app on iPhone.
+      </p>
+
+      <h2>What we want from you</h2>
+      <ul>
+        <li>Try the killer demo: tap the mic, say <em>"medium fry from McDonald's"</em>. Did it work?</li>
+        <li>Log 3+ meals from your real day. Where did the macros feel off?</li>
+        <li>Snap a photo of something layered. Did the follow-up question feel useful?</li>
+        <li>If anything weird happens, hit <strong>Send Beta Feedback</strong> with a screenshot.</li>
+      </ul>
+
+      <hr />
+
+      <p class="small">
+        By joining you agree to the <a href="/terms/">Terms</a> and
+        <a href="/privacy/">Privacy Policy</a>. Beta builds are pre-release software — expect
+        bugs, and back up anything that matters.
+      </p>
+    </main>
+
+    <footer>
+      <div>© 2026 VoCal</div>
+      <div>
+        <a href="/terms/">Terms</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/support/">Support</a>
+      </div>
+    </footer>
+  </body>
+</html>
