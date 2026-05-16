@@ -52,10 +52,24 @@ struct GetDailyMacrosIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        // Until App Group sharing is wired we report based on a static placeholder.
-        // The fully wired version reads from the shared SwiftData store.
-        let dialog = IntentDialog("You have 1,020 calories left today, and you're 76 grams short on protein.")
-        return .result(dialog: dialog)
+        guard let snap = DailyMacrosSnapshot.read() else {
+            let dialog: IntentDialog = "I don't have your day's log yet. Open VoCal and log a meal first."
+            return .result(dialog: dialog)
+        }
+        let kcalLeft = snap.calorieRemaining
+        let proteinShort = snap.proteinShort
+        let line: String
+        switch (kcalLeft, proteinShort) {
+        case (0, 0):
+            line = "You've hit your calorie and protein goals for today. Nice work."
+        case (let k, 0) where k > 0:
+            line = "You have \(k) calories left today, and you've hit your protein goal."
+        case (0, let p) where p > 0:
+            line = "You're at your calorie goal, but \(p) grams short on protein."
+        case (let k, let p):
+            line = "You have \(k) calories left today, and you're \(p) grams short on protein."
+        }
+        return .result(dialog: IntentDialog(stringLiteral: line))
     }
 }
 

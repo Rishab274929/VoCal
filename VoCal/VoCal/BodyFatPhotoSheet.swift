@@ -299,11 +299,25 @@ struct BodyFatPhotoSheet: View {
         // model lives behind /api/bodyfat — when deployed, the call site
         // swaps here.
         let bmi = bmiEstimate()
-        let baseline = appModel.profile.sex == "f" ? 23.0 : 16.5
+        let sex = appModel.profile.sex.lowercased()
+        let baseline: Double
+        let confidence: Double
+        switch sex {
+        case "f", "female":
+            baseline = 23.0
+            confidence = 0.78
+        case "m", "male":
+            baseline = 16.5
+            confidence = 0.78
+        default:
+            // Unspecified: midpoint with reduced confidence so user sees the band widen.
+            baseline = 19.75
+            confidence = 0.62
+        }
         let est = max(8.0, min(35.0, baseline + (bmi - 22) * 1.6))
         await MainActor.run {
             resultPct = est
-            resultConfidence = 0.78
+            resultConfidence = confidence
         }
     }
 

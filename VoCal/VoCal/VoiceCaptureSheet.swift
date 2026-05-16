@@ -418,19 +418,33 @@ struct VoiceCaptureSheet: View {
             )
         }
         if text.contains("chipotle") && text.contains("bowl") {
-            if text.contains("guac") && !answer.contains("single") && !answer.contains("double") && answer.isEmpty {
+            let guacAnswered = answer.contains("single") || answer.contains("double") || answer.contains("two")
+            if text.contains("guac") && !guacAnswered {
                 followUpQuestion = "Single scoop of guac?"
                 parseReasoning = "Need guac portion to finalize macros."
                 withAnimation(.spring) { phase = .followUp }
                 return nil
             }
-            let guacCals = (answer.contains("double") || answer.contains("two")) ? 460 : 230
+            // Per Chipotle's published nutrition: brown rice 210, black beans 130,
+            // chicken 180, guac 230 (1 scoop) / 460 (2 scoops), fajita veg ~20.
+            let doubleChicken = text.contains("double") && text.contains("chicken")
+            let chickenCals = doubleChicken ? 360 : 180
+            let chickenProtein = doubleChicken ? 64 : 32
+            let chickenFat = doubleChicken ? 14 : 7
+            let guacDouble = answer.contains("double") || answer.contains("two")
+            let guacCals = guacDouble ? 460 : 230
+            let guacFat = guacDouble ? 44 : 22
+            let kcal = 210 /* brown rice */ + 130 /* black beans */ + chickenCals + guacCals
+            let detail = (doubleChicken ? "double" : "single") + " chicken, brown rice, black beans, "
+                + (guacDouble ? "2× guac" : "1× guac") + " · offline"
             return LocalFallbackResult(
                 meal: .init(
                     name: "Chipotle Chicken Bowl",
-                    detail: "double chicken, brown rice, black beans, guac · offline",
-                    kcal: 150 + 360 + 210 + 130 + guacCals,
-                    protein_g: 74, carbs_g: 78, fat_g: guacCals == 460 ? 64 : 42,
+                    detail: detail,
+                    kcal: kcal,
+                    protein_g: chickenProtein + 5 /* beans */ + 4 /* rice */,
+                    carbs_g: 45 /* rice */ + 22 /* beans */ + (guacDouble ? 16 : 8) /* guac */,
+                    fat_g: chickenFat + 2 /* rice/beans */ + guacFat,
                     slot: "lunch", source: "voice", confidence: 0.92
                 ),
                 reasoning: "Offline match against cached Chipotle template."

@@ -77,7 +77,7 @@ struct UserProfile: Hashable {
     var weightLbs: Double
     var heightInches: Double
     var dailyCalorieGoal: Int
-    var sex: String = "x"
+    var sex: String = ""  // "m", "f", or "" (unspecified)
     var birthYear: Int = 1995
     var entitlement: Entitlement = .free
 
@@ -153,15 +153,27 @@ final class AppModel: ObservableObject {
         self.bodyMetrics = bodyMetrics
         self.coachMessages = coachMessages
         self.hasCompletedOnboarding = hasCompletedOnboarding
+        // Make sure App Intents have a snapshot to read on first invocation.
+        DailyMacrosSnapshot.write(from: totals)
     }
 
     func addMeal(_ meal: MealEntry) {
+        // Idempotency: ignore a save with the same name+kcal that arrived within
+        // 2s of the last save. Prevents double-taps on Save from logging twice
+        // and writing duplicate HealthKit samples.
+        if let recent = meals.first,
+           recent.name == meal.name,
+           recent.calories == meal.calories,
+           abs(recent.loggedAt.timeIntervalSince(meal.loggedAt)) < 2 {
+            return
+        }
         meals.insert(meal, at: 0)
         totals.caloriesEaten += meal.calories
         totals.proteinEaten += meal.protein
         totals.carbsEaten += meal.carbs
         totals.fatEaten += meal.fat
         lastSavedMeal = meal
+        DailyMacrosSnapshot.write(from: totals)
 
         // Mirror to Apple Health (no-op if unauthorized)
         Task { await VoCalHealth.shared.write(meal: meal) }
@@ -174,6 +186,7 @@ final class AppModel: ObservableObject {
         totals.proteinEaten = max(0, totals.proteinEaten - meal.protein)
         totals.carbsEaten = max(0, totals.carbsEaten - meal.carbs)
         totals.fatEaten = max(0, totals.fatEaten - meal.fat)
+        DailyMacrosSnapshot.write(from: totals)
     }
 
     func addBodyMetric(_ metric: BodyMetric) {
@@ -187,6 +200,7 @@ final class AppModel: ObservableObject {
     func updateGoal(daily kcal: Int) {
         totals.calorieGoal = kcal
         profile.dailyCalorieGoal = kcal
+        DailyMacrosSnapshot.write(from: totals)
     }
 
     func upgradeToPro() {
@@ -199,6 +213,72 @@ final class AppModel: ObservableObject {
 struct VoiceParsePayload: Codable {
     var transcript: String
     var follow_up_answer: String?
+}
+
+// MARK: - Daily macros snapshot (shared with App Intents)
+
+/// Compact today snapshot that the App Intents read so Siri can answer
+/// "what are my macros" without spinning up the full UI. Written to
+/// `UserDefaults.standard` on every meal save / goal update; since the
+/// App Intents live in the main app bundle they share the same defaults
+/// store.
+struct DailyMacrosSnapshot: Codable, Sendable {
+    var date: Date
+    var calorieGoal: Int
+    var caloriesEaten: Int
+    var proteinGoal: Int
+    var proteinEaten: Int
+    var carbsGoal: Int
+    var carbsEaten: Int
+    var fatGoal: Int
+    var fatEaten: Int
+
+    var calorieRemaining: Int { max(0, calorieGoal - caloriesEaten) }
+    var proteinShort: Int { max(0, proteinGoal - proteinEaten) }
+    var carbsShort: Int { max(0, carbsGoal - carbsEaten) }
+    var fatShort: Int { max(0, fatGoal - fatEaten) }
+
+    static let defaultsKey = "vocal.dailyMacrosSnapshot.v1"
+
+    nonisolated static func write(from totals: DailyTotals) {
+        let snap = DailyMacrosSnapshot(
+            date: totals.date,
+            calorieGoal: totals.calorieGoal,
+            caloriesEaten: totals.caloriesEaten,
+            proteinGoal: totals.proteinGoal,
+            proteinEaten: totals.proteinEaten,
+            carbsGoal: totals.carbsGoal,
+            carbsEaten: totals.carbsEaten,
+            fatGoal: totals.fatGoal,
+            fatEaten: totals.fatEaten
+        )
+        if let data = try? JSONEncoder().encode(snap) {
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+    }
+
+    nonisolated static func read() -> DailyMacrosSnapshot? {
+        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
+              let snap = try? JSONDecoder().decode(DailyMacrosSnapshot.self, from: data) else {
+            return nil
+        }
+        // Stale-day guard: if the snapshot isn't from today, the intent should
+        // assume a fresh day (eaten = 0 against the persisted goals).
+        if !Calendar.current.isDateInToday(snap.date) {
+            return DailyMacrosSnapshot(
+                date: .now,
+                calorieGoal: snap.calorieGoal,
+                caloriesEaten: 0,
+                proteinGoal: snap.proteinGoal,
+                proteinEaten: 0,
+                carbsGoal: snap.carbsGoal,
+                carbsEaten: 0,
+                fatGoal: snap.fatGoal,
+                fatEaten: 0
+            )
+        }
+        return snap
+    }
 }
 
 struct VoiceParseResponse: Codable {

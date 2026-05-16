@@ -32,19 +32,18 @@ final class SpeechRecorder: ObservableObject {
         self.recognizer = SFSpeechRecognizer(locale: locale) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     }
 
-    /// Asks for both Speech + Microphone authorization. Safe to call repeatedly.
+    /// Asks for both Speech + Microphone authorization in parallel. Safe to
+    /// call repeatedly — iOS will only show each system prompt the first time.
     func requestAuthorization() async {
-        // Speech
-        let speechStatus = await withCheckedContinuation { (cont: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
+        async let speechStatus: SFSpeechRecognizerAuthorizationStatus = withCheckedContinuation { cont in
             SFSpeechRecognizer.requestAuthorization { status in cont.resume(returning: status) }
         }
-        speechAuth = Self.map(speechStatus)
-
-        // Microphone
-        let micGranted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+        async let micGranted: Bool = withCheckedContinuation { cont in
             AVAudioApplication.requestRecordPermission { granted in cont.resume(returning: granted) }
         }
-        micAuth = micGranted ? .authorized : .denied
+        let (speech, mic) = await (speechStatus, micGranted)
+        speechAuth = Self.map(speech)
+        micAuth = mic ? .authorized : .denied
     }
 
     var isAuthorized: Bool { micAuth == .authorized && speechAuth == .authorized }
