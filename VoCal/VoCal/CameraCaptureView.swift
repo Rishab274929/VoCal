@@ -471,12 +471,18 @@ struct MealPhotoSheet: View {
                 recorder.stop()
             }
             if firstPassMeal == nil && followUpQuestion == nil {
-                // Pre-parse: send the spoken description through /api/voice/parse.
+                // Pre-parse: route through the photo or voice endpoint
+                // depending on what we have. With a photo the spoken
+                // description is optional — vision can read the plate
+                // by itself — so Parse is enabled as long as EITHER input
+                // is present.
+                let hasDescription = !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let canParse = hasDescription || image != nil
                 VoltageButton(title: "Parse", icon: "arrow.right") {
                     Task { await parseDescription() }
                 }
-                .opacity(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
-                .allowsHitTesting(!description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(canParse ? 1 : 0.4)
+                .allowsHitTesting(canParse)
             } else if let _ = followUpQuestion {
                 // Backend asked a refining question — submit the answer.
                 VoltageButton(title: "Submit", icon: "arrow.right") {
@@ -496,16 +502,17 @@ struct MealPhotoSheet: View {
 
     // MARK: AI pipeline
     //
-    // The photo is decorative. The spoken description (`description`) is
-    // what we send to /api/voice/parse — the same conversational engine
-    // VoiceCaptureSheet uses. That endpoint already knows how to ask smart
-    // follow-ups ("Single scoop of guac?"), so the photo flow gets refine
-    // loops for free.
+    // Photo-first when an image is present: route through /api/photo/parse
+    // (Wafer GLM-5.1 → Gemini Flash → OpenRouter gpt-4o-mini) with the
+    // spoken description riding along as `voice_context`. The vision model
+    // can ask the same kind of clarifying question the voice flow does
+    // ("Single scoop of guac?") and we replay the user's answer through
+    // the same endpoint with `followUpAnswer` set.
     //
-    // A real plate-vision pass is still available via /api/photo/parse
-    // (Wafer GLM-5.1 → OpenRouter gpt-4o-mini), but is intentionally not
-    // wired here yet — the spoken description outperforms a pure photo
-    // parse for most plates.
+    // Defensive: if no photo is present (shouldn't happen in this sheet —
+    // `parseDescription` is only reachable after `previewBlock` renders —
+    // but belt-and-suspenders) we fall back to the voice-only path so the
+    // user can still log via typed/spoken description.
 
     private func parseDescription() async {
         // Flush mic if still capturing — get the user's final words in.
@@ -514,12 +521,15 @@ struct MealPhotoSheet: View {
             if !final.isEmpty { description = final }
         }
         let transcript = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { return }
+        // With a photo, an empty transcript is OK — the vision model can
+        // parse the plate from pixels alone. Without a photo we still need
+        // *something* to send.
+        if image == nil && transcript.isEmpty { return }
         parsing = true
         defer { parsing = false }
         do {
-            let response = try await VoiceParseAPI.parse(
-                transcript: transcript,
+            let response = try await runParse(
+                transcript: transcript.isEmpty ? nil : transcript,
                 followUp: nil
             )
             lastReasoning = response.reasoning
@@ -533,7 +543,9 @@ struct MealPhotoSheet: View {
             }
         } catch {
             // Surface the real reason so the user knows it's a network issue
-            // rather than the backend rejecting their description.
+            // rather than the backend rejecting their description. Do NOT
+            // fall back to a fabricated meal — the brief is explicit that
+            // we must not silently invent 450-kcal stubs.
             followUpQuestion = "Couldn't reach the server (\(error.localizedDescription)). Add a brand or portion and try again?"
         }
     }
@@ -556,8 +568,8 @@ struct MealPhotoSheet: View {
         }()
         let effectiveAnswer = isOptOut ? "nothing extra" : answer
         do {
-            let response = try await VoiceParseAPI.parse(
-                transcript: transcript,
+            let response = try await runParse(
+                transcript: transcript.isEmpty ? nil : transcript,
                 followUp: effectiveAnswer
             )
             lastReasoning = response.reasoning
@@ -577,6 +589,27 @@ struct MealPhotoSheet: View {
             followUpQuestion = "Couldn't reach the server (\(error.localizedDescription)). Try a brand or portion size?"
             followUpAnswer = ""
         }
+    }
+
+    /// Single dispatch point so both `parseDescription` and `answerFollowUp`
+    /// pick the photo endpoint when an image is present and the voice
+    /// endpoint when it isn't. Keeps the network-error handling and the
+    /// caller-side state mutation in one branch each.
+    private func runParse(transcript: String?, followUp: String?) async throws -> VoiceParseResponse {
+        if let img = image {
+            return try await PhotoParseAPI.parse(
+                image: img,
+                voiceContext: transcript,
+                followUpAnswer: followUp
+            )
+        }
+        // Defensive voice-only path. Shouldn't be reached in normal use of
+        // this sheet because `parseDescription` is gated behind an image,
+        // but a future refactor that drops the gate gets safe behavior.
+        return try await VoiceParseAPI.parse(
+            transcript: transcript ?? "",
+            followUp: followUp
+        )
     }
 
     /// Map the backend's `source` string ("photo", "voice+photo", "voice")

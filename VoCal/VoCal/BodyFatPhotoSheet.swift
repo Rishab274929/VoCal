@@ -26,6 +26,14 @@ struct BodyFatPhotoSheet: View {
     @State private var resultPct: Double?
     @State private var resultConfidence: Double = 0.82
     @State private var cameraPermissionDenied = false
+    /// Set when we attempted the vision endpoint, it failed, and the result
+    /// shown is the BMI-only fallback. Surfaces a one-liner so the user
+    /// knows the confidence band reflects degraded inputs.
+    @State private var visionFallbackUsed = false
+    /// Optional one-line reasoning from the vision model. Currently unused
+    /// in the UI but kept so we can show it next to the band without
+    /// another network round-trip later.
+    @State private var visionReasoning: String?
 
     var body: some View {
         ZStack {
@@ -251,6 +259,14 @@ struct BodyFatPhotoSheet: View {
                     Text("Estimate is BMI-only without photos — capture both angles to tighten the band.")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.Palette.pulse)
+                } else if visionFallbackUsed {
+                    // Both photos captured but the vision call failed — say
+                    // so out loud so the user understands why the band is
+                    // wider than the polished "with photos" estimate would
+                    // normally show.
+                    Text("Couldn't reach vision; using BMI fallback.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.Palette.pulse)
                 }
             }
 
@@ -334,22 +350,72 @@ struct BodyFatPhotoSheet: View {
         front = nil
         side = nil
         resultPct = nil
+        visionFallbackUsed = false
+        visionReasoning = nil
         withAnimation(.spring) { step = .intro }
     }
 
     private func runEstimate() async {
         estimating = true
         defer { estimating = false }
+
+        // If both photos are present we try the real vision model first;
+        // on any failure we fall back to the BMI heuristic with a clearly
+        // degraded confidence band and a one-line disclosure. With no /
+        // partial photos the network call is skipped — vision needs both
+        // angles to do better than BMI anyway.
+        if let f = front, let s = side {
+            do {
+                let visionResult = try await BodyFatVisionAPI.estimate(
+                    front: f,
+                    side: s,
+                    sex: appModel.profile.sex,
+                    weightLb: appModel.profile.weightLbs,
+                    heightIn: appModel.profile.heightInches
+                )
+                await MainActor.run {
+                    resultPct = visionResult.bodyFatPct
+                    resultConfidence = visionResult.confidence
+                    visionFallbackUsed = false
+                    visionReasoning = visionResult.reasoning
+                }
+                return
+            } catch {
+                // Fall through to BMI fallback. Mark the disclosure so the
+                // user can see why the band is wider than the polished
+                // photo-driven case.
+                await MainActor.run { visionFallbackUsed = true }
+            }
+        } else {
+            // No vision call attempted. Make sure the disclosure flag is
+            // cleared in case a previous Retake left it set.
+            await MainActor.run { visionFallbackUsed = false }
+        }
+
+        // BMI fallback (same heuristic as before). The artificial 1.2s
+        // delay used to gate this branch so the result didn't pop in
+        // instantly — preserve it for the fallback so the UI still feels
+        // like work happened.
         try? await Task.sleep(nanoseconds: 1_200_000_000)
-        // Heuristic estimate based on weight/height/sex. The real vision
-        // model lives behind /api/bodyfat — when deployed, the call site
-        // swaps here.
-        //
-        // Bug guard: previously this would silently produce wildly off
-        // estimates when weight/height were missing (bmi → 0 → est clamps
-        // to 8.0), still presenting them with full confidence. Now we
-        // detect that and drop confidence to floor while flagging the
-        // estimate as photo-only.
+
+        let (est, confidence) = bmiHeuristic()
+        await MainActor.run {
+            resultPct = est
+            // If we just fell back from a failed vision call, knock the
+            // confidence down further so the band visibly widens (the
+            // user is being told "degraded inputs" in copy — keep the
+            // number honest with the copy).
+            resultConfidence = visionFallbackUsed
+                ? max(0.40, min(confidence, 0.55))
+                : confidence
+        }
+    }
+
+    /// Pure-Swift BMI-derived body-fat % with a confidence value that
+    /// reflects how much of the input we actually have (anthropometrics,
+    /// sex, photo angles). Extracted so the vision fallback path can
+    /// reuse the exact heuristic without copy-pasting.
+    private func bmiHeuristic() -> (pct: Double, confidence: Double) {
         let bmi = bmiEstimate()
         let haveAnthro = appModel.profile.weightLbs > 0 && appModel.profile.heightInches > 0
         let sex = appModel.profile.sex.lowercased()
@@ -385,10 +451,7 @@ struct BodyFatPhotoSheet: View {
         }
 
         let est = max(8.0, min(35.0, baseline + (bmi - 22) * 1.6))
-        await MainActor.run {
-            resultPct = est
-            resultConfidence = confidence
-        }
+        return (est, confidence)
     }
 
     /// BMI in metric. Returns a sane fallback (22 = mid-normal) when either
@@ -425,6 +488,136 @@ struct BodyFatPhotoSheet: View {
         // the dismissal out.
         front = nil
         side = nil
+    }
+}
+
+// MARK: - Vision API client
+//
+// Tight scope: this lives in the same file as `BodyFatPhotoSheet` because
+// it's the only call site. If a second surface ever needs a BF% from
+// photos, lift this into its own file at that point.
+
+enum BodyFatVisionAPI {
+    struct Result {
+        let bodyFatPct: Double
+        let confidence: Double
+        let reasoning: String?
+    }
+
+    enum APIError: Swift.Error, LocalizedError {
+        case encodeFailed
+        case server(Int, String)
+        case malformed
+        var errorDescription: String? {
+            switch self {
+            case .encodeFailed:        return "Couldn't compress the body photos."
+            case .server(let s, let m): return "Server \(s): \(m)"
+            case .malformed:           return "Unexpected response from the body-fat vision model."
+            }
+        }
+    }
+
+    /// Backend contract (per the wave-2 spec): POST to /api/bodyfat with
+    /// both images inline as base64, plus the basic anthropometrics.
+    /// Returns body-fat % + confidence (and optional reasoning) on success.
+    private struct Payload: Codable {
+        let image_b64_front: String
+        let image_b64_side: String
+        let sex: String
+        let weight_lb: Double
+        let height_in: Double
+    }
+
+    private struct ResponseBody: Codable {
+        let body_fat_pct: Double?
+        let confidence: Double?
+        let reasoning: String?
+    }
+
+    /// Vision can be slow — vision models running on cold workers
+    /// frequently hit ~10s on the first request. 15s gives headroom
+    /// without making a stuck call feel infinite.
+    private static let timeoutSeconds: TimeInterval = 15
+
+    static func estimate(
+        front: UIImage,
+        side: UIImage,
+        sex: String,
+        weightLb: Double,
+        heightIn: Double
+    ) async throws -> Result {
+        guard let url = URL(string: "\(APIConfig.baseURL)/bodyfat") else {
+            throw APIError.malformed
+        }
+        // Downsample both photos to max edge 1024 + JPEG 0.7 before
+        // base64. Larger than meal photos (768) because body silhouettes
+        // benefit from a bit more pixel density — the model needs to see
+        // shoulder vs waist taper to estimate distribution.
+        guard
+            let frontJPEG = downscaledJPEG(image: front, longestEdge: 1024, quality: 0.7),
+            let sideJPEG = downscaledJPEG(image: side, longestEdge: 1024, quality: 0.7)
+        else {
+            throw APIError.encodeFailed
+        }
+        let payload = Payload(
+            image_b64_front: frontJPEG.base64EncodedString(),
+            image_b64_side: sideJPEG.base64EncodedString(),
+            sex: sex,
+            weight_lb: weightLb,
+            height_in: heightIn
+        )
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = timeoutSeconds
+        req.httpBody = try JSONEncoder().encode(payload)
+        await AuthSession.shared.authorize(&req)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw APIError.malformed }
+        if !(200..<300).contains(http.statusCode) {
+            let errBody = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+            throw APIError.server(http.statusCode, errBody["error"] ?? "")
+        }
+        let body = try JSONDecoder().decode(ResponseBody.self, from: data)
+        guard let pct = body.body_fat_pct, pct.isFinite, pct > 0, pct < 80 else {
+            // Server returned a 200 but no usable body-fat number — treat
+            // that as malformed so the caller falls back to BMI rather
+            // than displaying a phantom 0% or NaN.
+            throw APIError.malformed
+        }
+        // Clamp confidence into the valid [0, 1] band. Server should send
+        // this already in range, but a defensive clamp keeps the band
+        // calculation honest.
+        let clampedConfidence: Double = {
+            guard let c = body.confidence, c.isFinite else { return 0.70 }
+            return max(0.0, min(1.0, c))
+        }()
+        return Result(
+            bodyFatPct: pct,
+            confidence: clampedConfidence,
+            reasoning: body.reasoning
+        )
+    }
+
+    /// Aspect-fit resize + JPEG. Mirrors PhotoParseAPI's helper so we
+    /// don't take a dependency just to share three lines of geometry.
+    private static func downscaledJPEG(image: UIImage, longestEdge: CGFloat, quality: CGFloat) -> Data? {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let scale = min(longestEdge / max(size.width, size.height), 1)
+        let target = CGSize(width: floor(size.width * scale), height: floor(size.height * scale))
+        let renderer = UIGraphicsImageRenderer(size: target, format: {
+            let f = UIGraphicsImageRendererFormat.default()
+            f.scale = 1
+            f.opaque = true
+            return f
+        }())
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: quality)
     }
 }
 

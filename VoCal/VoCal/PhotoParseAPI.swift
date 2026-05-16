@@ -29,23 +29,54 @@ enum PhotoParseAPI {
     private struct Payload: Codable {
         let image_base64: String
         let voice_context: String?
+        /// Sent alongside `voice_context` when the user is answering the
+        /// backend's clarifying question. The current backend ignores
+        /// unknown fields, but we also fold the answer into `voice_context`
+        /// (see below) so the model still sees it on a server that hasn't
+        /// learned the dedicated field yet.
+        let follow_up_answer: String?
     }
 
     /// Parse a photo (with optional spoken context) into a `VoiceParseResponse`.
     /// Throws on network/server errors so the caller can show a fallback.
-    static func parse(image: UIImage, voiceContext: String?) async throws -> VoiceParseResponse {
+    ///
+    /// `followUpAnswer` is the user's reply to a previous `follow_up_question`
+    /// in the same photo-parse round. Backward compatible — defaults to nil
+    /// for the first pass.
+    static func parse(
+        image: UIImage,
+        voiceContext: String?,
+        followUpAnswer: String? = nil
+    ) async throws -> VoiceParseResponse {
         guard let url = URL(string: "\(APIConfig.baseURL)/photo/parse") else {
             throw Error.malformed
         }
-        // Resize so the longest edge is 768px — plenty for the vision model
-        // to identify food, well under the 1.5 MB upload cap. Use 0.7 JPEG
-        // quality for the same reason.
+        // Upload size cap (≈1.5 MB after base64). 768px on the longest edge
+        // is plenty for the vision model to identify food and stays well
+        // under the cap. 0.7 JPEG quality for the same reason.
         guard let jpeg = downscaledJPEG(image: image, longestEdge: 768, quality: 0.7) else {
             throw Error.encodeFailed
         }
         let b64 = jpeg.base64EncodedString()
 
-        let body = try JSONEncoder().encode(Payload(image_base64: b64, voice_context: voiceContext))
+        // Defensive fold: if the caller passed a follow-up answer, splice
+        // it onto the voice context so a backend that doesn't read the
+        // dedicated field still sees the clarification. Newer backends
+        // can prefer the explicit `follow_up_answer` field.
+        let mergedContext: String? = {
+            let trimmedAnswer = (followUpAnswer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedAnswer.isEmpty else { return voiceContext }
+            let base = (voiceContext ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return base.isEmpty
+                ? "Clarification: \(trimmedAnswer)"
+                : "\(base) — Clarification: \(trimmedAnswer)"
+        }()
+
+        let body = try JSONEncoder().encode(Payload(
+            image_base64: b64,
+            voice_context: mergedContext,
+            follow_up_answer: followUpAnswer
+        ))
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
