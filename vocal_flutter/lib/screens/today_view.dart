@@ -11,8 +11,12 @@ import '../widgets/components.dart';
 class TodayView extends StatelessWidget {
   final VoidCallback onShowVoice;
   final VoidCallback onShowPhoto;
+  final VoidCallback onShowBarcode;
   const TodayView(
-      {super.key, required this.onShowVoice, required this.onShowPhoto});
+      {super.key,
+      required this.onShowVoice,
+      required this.onShowPhoto,
+      required this.onShowBarcode});
 
   String _greeting(String name) {
     final h = DateTime.now().hour;
@@ -51,6 +55,20 @@ class TodayView extends StatelessWidget {
             children: [
               const VoCalWordmark(),
               const Spacer(),
+              GestureDetector(
+                onTap: onShowBarcode,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Palette.hairlineStrong),
+                  ),
+                  child: const Icon(Icons.qr_code_scanner,
+                      size: 14, color: Palette.bone),
+                ),
+              ),
+              const SizedBox(width: 8),
               GestureDetector(
                 onTap: onShowPhoto,
                 child: Container(
