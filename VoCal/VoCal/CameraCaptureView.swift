@@ -279,40 +279,64 @@ struct MealPhotoSheet: View {
     }
 
     // MARK: AI pipeline
+    //
+    // Two-shot flow:
+    //   1. First pass with only the image → backend gpt-4o-mini parses
+    //      visible ingredients and returns either a meal or a follow-up
+    //      question ("Anything underneath I can't see?").
+    //   2. If a follow-up came back, the user types their answer and we
+    //      submit the SAME image plus the answer as `voice_context`. The
+    //      vision model re-parses with the hidden-layer hint.
 
     private func runFirstPass() async {
+        guard let img = image else { return }
         parsing = true
         defer { parsing = false }
-        // Simulated first-pass while real Vision LLM lands behind /api/meals/photo.
-        try? await Task.sleep(nanoseconds: 900_000_000)
-        firstPassMeal = .init(
-            name: "Layered salad bowl",
-            detail: "Greens, chicken, quinoa, dressing",
-            kcal: 520, protein_g: 38, carbs_g: 42, fat_g: 20,
-            slot: "lunch", source: "photo", confidence: 0.7
-        )
-        // The signature "voice fact-check" follow-up
-        followUpQuestion = "Anything underneath I can't see?"
+        do {
+            let response = try await PhotoParseAPI.parse(image: img, voiceContext: nil)
+            if let q = response.follow_up_question, response.meal == nil {
+                firstPassMeal = nil
+                followUpQuestion = q
+            } else if let meal = response.meal {
+                firstPassMeal = meal
+                followUpQuestion = nil
+            } else {
+                firstPassMeal = .init(
+                    name: "Photo unparsed",
+                    detail: "Try the voice flow instead, or try again with a clearer shot.",
+                    kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
+                    slot: "snack", source: "photo", confidence: 0.0
+                )
+            }
+        } catch {
+            firstPassMeal = .init(
+                name: "Photo parse failed",
+                detail: error.localizedDescription,
+                kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
+                slot: "snack", source: "photo", confidence: 0.0
+            )
+        }
     }
 
     private func answerFollowUp() async {
-        guard let base = firstPassMeal else { return }
-        let answer = followUpAnswer.lowercased()
-        var adjusted = base
-
-        if answer.contains("quinoa") || answer.contains("rice") {
-            adjusted.kcal += 110
-            adjusted.carbs_g += 22
-            adjusted.protein_g += 4
-            adjusted.detail = "Greens, chicken, quinoa (extra), dressing"
-        } else if answer.contains("oil") || answer.contains("dressing") {
-            adjusted.kcal += 90
-            adjusted.fat_g += 10
+        guard let img = image else { return }
+        parsing = true
+        defer { parsing = false }
+        let answer = followUpAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let response = try await PhotoParseAPI.parse(image: img, voiceContext: answer)
+            if let meal = response.meal {
+                firstPassMeal = meal
+                followUpQuestion = nil
+                commit(meal: meal, source: .voicePhoto)
+            } else {
+                // Backend wants another follow-up. Show it; user can answer again.
+                followUpQuestion = response.follow_up_question
+                followUpAnswer = ""
+            }
+        } catch {
+            followUpQuestion = "Couldn't reach the vision model. Tap Save to log a rough estimate, or Retake to try again."
         }
-
-        firstPassMeal = adjusted
-        followUpQuestion = nil
-        commit(meal: adjusted, source: .voicePhoto)
     }
 
     private func commit(meal optionalMeal: VoiceParseResponse.ParsedMeal? = nil, source: MealEntry.Source = .photo) {
