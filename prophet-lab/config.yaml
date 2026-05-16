@@ -1,0 +1,61 @@
+# SigmaProphet runtime configuration.
+# Secrets (API keys) come from the environment / .env file — never from this file.
+
+slug: "sigma-prophet"
+n_ticks: 96
+log_level: "INFO"
+
+# Ensemble heads. Each model carries its own provider + endpoint.
+#
+# Available Wafer models (https://docs.wafer.ai/wafer-pass):
+#   - GLM-5.1                  (workhorse, follows JSON well)
+#   - Qwen3.5-397B-A17B        (heavy reasoning — needs max_tokens >= 4000)
+#   - DeepSeek-V4-Pro
+#   - MiniMax-M2.7
+#
+# Available OpenRouter models (subset): anthropic/claude-sonnet-4.5,
+#   openai/gpt-4o, google/gemini-2.5-pro, meta/llama-3.3-70b, etc.
+#
+# Tip: keep heads on different providers/training data for ensemble diversity.
+
+models:
+  - name: "GLM-5.1"
+    provider: "wafer"
+    weight: 2.0
+    temperature: 0.2
+    max_tokens: 2000
+  - name: "Qwen3.5-397B-A17B"
+    provider: "wafer"
+    weight: 1.0
+    temperature: 0.2
+    max_tokens: 4000   # reasoning model: budget includes its scratchpad
+
+research:
+  enabled: true
+  backend: "brave"          # brave | tavily | none
+  max_queries: 4
+  max_results_per_query: 5
+  timeout_sec: 25
+
+trading:
+  kelly_fraction: 0.25       # fractional Kelly — 0.25 = quarter-Kelly
+  min_edge: 0.05             # require ≥5pp edge before trading
+  min_shares: 1.0
+  max_shares_per_trade: 200.0
+  max_notional_per_market: 1000.0
+  max_gross_exposure: 10000.0
+  max_open_positions: 30
+  max_trades_per_tick: 20
+  market_prior_weight: 0.35  # shrink toward market mid by this share
+  starting_cash: 10000.0
+
+forecast:
+  dataset: "sample-sports"
+  output_path: "outputs/predictions.json"
+  timeout_per_event_sec: 180
+
+calibration:
+  shrink_to_prior: 0.10      # 0 = no shrinkage; 1 = always uniform
+  min_prob: 0.02
+  max_prob: 0.98
+  log_odds_smoothing: 0.0
