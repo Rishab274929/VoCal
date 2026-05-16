@@ -12,9 +12,9 @@ import Combine
 
 // MARK: - Meals
 
-struct MealEntry: Identifiable, Hashable {
-    enum Source: String, Hashable { case voice, photo, manual, voicePhoto = "voice+photo", barcode }
-    enum Slot: String, Hashable, CaseIterable { case breakfast, lunch, dinner, snack }
+struct MealEntry: Identifiable, Hashable, Codable {
+    enum Source: String, Hashable, Codable { case voice, photo, manual, voicePhoto = "voice+photo", barcode }
+    enum Slot: String, Hashable, CaseIterable, Codable { case breakfast, lunch, dinner, snack }
 
     let id: UUID
     var name: String
@@ -54,7 +54,7 @@ struct MealEntry: Identifiable, Hashable {
 
 // MARK: - Daily totals
 
-struct DailyTotals: Hashable {
+struct DailyTotals: Hashable, Codable {
     var date: Date
     var calorieGoal: Int
     var caloriesEaten: Int
@@ -71,7 +71,7 @@ struct DailyTotals: Hashable {
 
 // MARK: - User
 
-struct UserProfile: Hashable {
+struct UserProfile: Hashable, Codable {
     var displayName: String
     var streakDays: Int
     var weightLbs: Double
@@ -81,14 +81,14 @@ struct UserProfile: Hashable {
     var birthYear: Int = 1995
     var entitlement: Entitlement = .free
 
-    enum Entitlement: String, Hashable {
+    enum Entitlement: String, Hashable, Codable {
         case free, pro
     }
 }
 
 // MARK: - Body metrics
 
-struct BodyMetric: Identifiable, Hashable {
+struct BodyMetric: Identifiable, Hashable, Codable {
     let id: UUID
     var weightLbs: Double
     var bodyFatPct: Double?
@@ -112,8 +112,8 @@ struct BodyMetric: Identifiable, Hashable {
 
 // MARK: - Coach
 
-struct CoachMessage: Identifiable, Hashable {
-    enum Role: String, Hashable { case user, assistant }
+struct CoachMessage: Identifiable, Hashable, Codable {
+    enum Role: String, Hashable, Codable { case user, assistant }
     let id: UUID
     var role: Role
     var content: String
@@ -157,6 +157,42 @@ final class AppModel: ObservableObject {
         DailyMacrosSnapshot.write(from: totals)
     }
 
+    /// Rehydrate from a persisted snapshot. Use at app launch via
+    /// `AppModel.fromPersistedOrEmpty()` rather than calling directly.
+    convenience init(snapshot: AppStateSnapshot) {
+        self.init(
+            totals: snapshot.totals,
+            meals: snapshot.meals,
+            profile: snapshot.profile,
+            bodyMetrics: snapshot.bodyMetrics,
+            coachMessages: snapshot.coachMessages,
+            hasCompletedOnboarding: snapshot.hasCompletedOnboarding
+        )
+    }
+
+    /// Build an AppModel from disk if we have a saved state, otherwise from
+    /// a clean empty state. The entry point used by `VoCalApp` at launch.
+    static func fromPersistedOrEmpty() -> AppModel {
+        let snap = Persistence.load() ?? AppStateSnapshot.empty()
+        return AppModel(snapshot: snap)
+    }
+
+    /// Serialize the current state and write it to disk. Called automatically
+    /// from every mutating method below; safe to call manually.
+    func persist() {
+        let snapshot = AppStateSnapshot(
+            version: AppStateSnapshot.currentVersion,
+            totals: totals,
+            meals: meals,
+            profile: profile,
+            bodyMetrics: bodyMetrics,
+            coachMessages: coachMessages,
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            savedAt: .now
+        )
+        Persistence.save(snapshot)
+    }
+
     func addMeal(_ meal: MealEntry) {
         // Idempotency: ignore a save with the same name+kcal that arrived within
         // 2s of the last save. Prevents double-taps on Save from logging twice
@@ -174,6 +210,7 @@ final class AppModel: ObservableObject {
         totals.fatEaten += meal.fat
         lastSavedMeal = meal
         DailyMacrosSnapshot.write(from: totals)
+        persist()
 
         // Mirror to Apple Health (no-op if unauthorized)
         Task { await VoCalHealth.shared.write(meal: meal) }
@@ -187,24 +224,38 @@ final class AppModel: ObservableObject {
         totals.carbsEaten = max(0, totals.carbsEaten - meal.carbs)
         totals.fatEaten = max(0, totals.fatEaten - meal.fat)
         DailyMacrosSnapshot.write(from: totals)
+        persist()
     }
 
     func addBodyMetric(_ metric: BodyMetric) {
         bodyMetrics.insert(metric, at: 0)
+        persist()
     }
 
     func appendCoach(_ message: CoachMessage) {
         coachMessages.append(message)
+        persist()
     }
 
     func updateGoal(daily kcal: Int) {
         totals.calorieGoal = kcal
         profile.dailyCalorieGoal = kcal
         DailyMacrosSnapshot.write(from: totals)
+        persist()
     }
 
     func upgradeToPro() {
         profile.entitlement = .pro
+        persist()
+    }
+
+    func completeOnboarding(profile newProfile: UserProfile, calorieGoal: Int) {
+        self.profile = newProfile
+        self.totals.calorieGoal = calorieGoal
+        self.profile.dailyCalorieGoal = calorieGoal
+        self.hasCompletedOnboarding = true
+        DailyMacrosSnapshot.write(from: totals)
+        persist()
     }
 }
 

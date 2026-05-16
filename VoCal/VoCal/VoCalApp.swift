@@ -7,14 +7,11 @@ import SwiftUI
 
 @main
 struct VoCalApp: App {
-    @StateObject private var appModel = AppModel(
-        totals: MockData.today,
-        meals: MockData.recentMeals,
-        profile: MockData.profile,
-        bodyMetrics: MockData.bodyMetrics,
-        coachMessages: MockData.coachIntro,
-        hasCompletedOnboarding: true
-    )
+    // Loads the persisted snapshot from Documents if present; otherwise
+    // starts a brand-new user at an empty state with onboarding pending.
+    // Replaces the old MockData seed, which made every fresh install look
+    // like a 12-day-streak demo account.
+    @StateObject private var appModel = AppModel.fromPersistedOrEmpty()
 
     var body: some Scene {
         WindowGroup {

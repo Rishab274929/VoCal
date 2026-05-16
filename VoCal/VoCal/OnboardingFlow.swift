@@ -349,14 +349,18 @@ struct OnboardingFlow: View {
     }
 
     private func finish() {
-        // Apply collected data
-        appModel.profile.displayName = name.isEmpty ? appModel.profile.displayName : name
-        appModel.profile.sex = sex
-        appModel.profile.heightInches = Double(heightFeet * 12 + heightInches)
-        appModel.profile.weightLbs = Double(weight)
-        appModel.updateGoal(daily: goalKcal)
+        // Build the profile from collected onboarding data, fall back to any
+        // pre-existing values for fields the user didn't fill in.
+        var newProfile = appModel.profile
+        newProfile.displayName = name.isEmpty ? appModel.profile.displayName : name
+        newProfile.sex = sex
+        newProfile.heightInches = Double(heightFeet * 12 + heightInches)
+        newProfile.weightLbs = Double(weight)
+
         withAnimation(.easeOut(duration: 0.4)) {
-            appModel.hasCompletedOnboarding = true
+            // completeOnboarding bundles profile + goal + flag + persist into one
+            // atomic update so we never end up with a half-onboarded user on disk.
+            appModel.completeOnboarding(profile: newProfile, calorieGoal: goalKcal)
         }
     }
 }
