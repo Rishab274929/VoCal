@@ -104,6 +104,7 @@ struct ProgressScreen: View {
 
     private var weightCard: some View {
         let weights = appModel.bodyMetrics.map { $0.weightLbs }.reversed()
+        let hasHistory = weights.count >= 2
         let current = weights.last ?? appModel.profile.weightLbs
         let first = weights.first ?? current
         let delta = current - first
@@ -124,17 +125,35 @@ struct ProgressScreen: View {
                     }
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(deltaString(delta, unit: "lb"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(delta < 0 ? Theme.Palette.voltage : Theme.Palette.pulse)
-                    Text("vs 4 weeks ago")
-                        .font(.system(size: 10))
+                // Suppress the delta when there's no history — "+0.0 lb vs
+                // 4 weeks ago" is misleading for a brand-new install.
+                if hasHistory {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(deltaString(delta, unit: "lb"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(delta < 0 ? Theme.Palette.voltage : Theme.Palette.pulse)
+                        Text("vs 4 weeks ago")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.Palette.smoke)
+                    }
+                } else {
+                    Text("LOG MORE TO SEE TREND")
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(1.4)
                         .foregroundStyle(Theme.Palette.smoke)
                 }
             }
-            WeightSparkline(values: Array(weights), tint: Theme.Palette.voltage)
-                .frame(height: 88)
+            if hasHistory {
+                WeightSparkline(values: Array(weights), tint: Theme.Palette.voltage)
+                    .frame(height: 88)
+            } else {
+                // Hairline placeholder so the card has a consistent shape
+                // even before any history exists.
+                Rectangle()
+                    .fill(Theme.Palette.hairline)
+                    .frame(height: 1)
+                    .padding(.vertical, 40)
+            }
         }
         .padding(20)
         .background(
@@ -150,12 +169,18 @@ struct ProgressScreen: View {
     // MARK: body-fat card
 
     private var bodyFatCard: some View {
+        // Empty-state branch: a brand-new user has no bodyFat samples, so
+        // showing "17.0%" with a fake delta would lie about their data.
+        // Render an empty-state card with the same dimensions instead.
         let bfs = appModel.bodyMetrics.compactMap { $0.bodyFatPct }.reversed()
-        let current = bfs.last ?? 17.0
+        if bfs.isEmpty {
+            return AnyView(emptyBodyFatCard)
+        }
+        let current = bfs.last ?? 0
         let first = bfs.first ?? current
         let delta = current - first
 
-        return HStack(alignment: .top, spacing: 16) {
+        return AnyView(HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("BODY FAT")
                     .eyebrow()
@@ -169,9 +194,9 @@ struct ProgressScreen: View {
                         .foregroundStyle(Theme.Palette.smoke)
                 }
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.down.right")
+                    Image(systemName: delta <= 0 ? "arrow.down.right" : "arrow.up.right")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.Palette.voltage)
+                        .foregroundStyle(delta <= 0 ? Theme.Palette.voltage : Theme.Palette.pulse)
                     Text(String(format: "%.1f pts in 30d", abs(delta)))
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.Palette.ash)
@@ -183,7 +208,7 @@ struct ProgressScreen: View {
                     HStack(spacing: 6) {
                         Image(systemName: "camera.fill")
                             .font(.system(size: 11, weight: .semibold))
-                        Text("Take baseline")
+                        Text("Retake")
                             .font(.system(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(Theme.Palette.voltage)
@@ -211,6 +236,55 @@ struct ProgressScreen: View {
                 Image(systemName: "figure.arms.open")
                     .font(.system(size: 22))
                     .foregroundStyle(Theme.Palette.bone)
+            }
+            .frame(width: 88, height: 88)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                .fill(Theme.Palette.inkSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                        .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
+                )
+        ))
+    }
+
+    private var emptyBodyFatCard: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("BODY FAT")
+                    .eyebrow()
+                Text("Take your first reading.")
+                    .font(Theme.Font.serif(22, weight: .medium, italic: true))
+                    .foregroundStyle(Theme.Palette.bone)
+                Text("Two photos. Confidence band included.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Palette.smoke)
+                Spacer(minLength: 4)
+                Button {
+                    showingBFCapture = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Take baseline")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.Palette.voltage)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().strokeBorder(Theme.Palette.voltage, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            ZStack {
+                Circle()
+                    .stroke(Theme.Palette.hairlineStrong, lineWidth: 8)
+                Image(systemName: "figure.arms.open")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Theme.Palette.smoke)
             }
             .frame(width: 88, height: 88)
         }

@@ -81,20 +81,31 @@ struct TodayView: View {
         case 17..<22: prefix = "Evening"
         default:      prefix = "Late night"
         }
-        return "\(prefix) · \(appModel.profile.displayName)"
+        // Fallback for the brief window where a user lands in ContentView
+        // before onboarding ever filled the displayName. Without this the
+        // eyebrow renders as "EVENING · " with a trailing dot.
+        let name = appModel.profile.displayName.trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? prefix : "\(prefix) · \(name)"
     }
 
     private var serifLine: AttributedString {
-        let remaining = appModel.totals.calorieRemaining
+        let eaten = appModel.totals.caloriesEaten
+        let goal = appModel.totals.calorieGoal
+        let over = eaten > goal
+        let value = over ? (eaten - goal) : max(0, goal - eaten)
         // Group the number with thousands separators so "1880" reads as "1,880"
         // and the headline fits on two lines instead of three on iPhone 17 Pro.
-        let formatted = remaining.formatted(.number)
-        var s = AttributedString("You have ")
+        let formatted = value.formatted(.number)
+
+        // Prefix changes when the user has overshot the goal so the hero
+        // copy doesn't just silently report "0 kcal left today" — it
+        // becomes "You're 250 kcal over today." with the number in coral.
+        var s = AttributedString(over ? "You're " : "You have ")
         s.foregroundColor = Theme.Palette.smoke
         var n = AttributedString("\(formatted) kcal")
         n.font = Theme.Font.serif(36, weight: .medium, italic: true)
-        n.foregroundColor = Theme.Palette.voltage
-        var tail = AttributedString(" left today.")
+        n.foregroundColor = over ? Theme.Palette.pulse : Theme.Palette.voltage
+        var tail = AttributedString(over ? " over today." : " left today.")
         tail.foregroundColor = Theme.Palette.ash
         s.append(n)
         s.append(tail)
@@ -171,7 +182,9 @@ struct TodayView: View {
             if appModel.meals.isEmpty {
                 emptyMealsCard
             } else {
-                VStack(spacing: 10) {
+                // LazyVStack so a heavy logging day (50+ entries) doesn't
+                // eagerly lay out every MealCard on first render.
+                LazyVStack(spacing: 10) {
                     ForEach(appModel.meals) { meal in
                         MealCard(meal: meal)
                     }

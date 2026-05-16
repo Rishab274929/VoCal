@@ -30,25 +30,33 @@ struct OnboardingFlow: View {
                     .padding(.top, 24)
                     .padding(.horizontal, 28)
 
-                Spacer(minLength: 24)
-
-                Group {
-                    switch step {
-                    case .pitch: pitchView
-                    case .name:  nameView
-                    case .body:  bodyView
-                    case .goal:  goalView
-                    case .ready: readyView
+                // ScrollView so steps with tall content (body baseline's
+                // three picker wheels, pitch's example pills + Google
+                // sign-in button) don't get crushed on shorter phones
+                // (iPhone SE / mini). Flex layout would otherwise squash
+                // the wheels below 96pt and steal taps.
+                ScrollView {
+                    Group {
+                        switch step {
+                        case .pitch: pitchView
+                        case .name:  nameView
+                        case .body:  bodyView
+                        case .goal:  goalView
+                        case .ready: readyView
+                        }
                     }
+                    .padding(.horizontal, 28)
+                    .padding(.top, 24)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 28)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer()
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
 
                 footer
                     .padding(.horizontal, 28)
                     .padding(.bottom, 28)
+                    .padding(.top, 8)
             }
         }
         .sheet(isPresented: $showingPaywall) {
@@ -209,6 +217,9 @@ struct OnboardingFlow: View {
             .font(Theme.Font.serif(24, weight: .regular))
             .foregroundStyle(Theme.Palette.bone)
             .textInputAutocapitalization(.words)
+            .autocorrectionDisabled(true)
+            .submitLabel(.next)
+            .onSubmit { if canAdvance { advance() } }
             .padding(.vertical, 14)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Theme.Palette.voltage).frame(height: 1.5)
@@ -228,8 +239,11 @@ struct OnboardingFlow: View {
                 .foregroundStyle(Theme.Palette.bone)
 
             VStack(alignment: .leading, spacing: 18) {
+                // "Prefer not" emits "" to match UserProfile.sex's documented
+                // unspecified value (see Item.swift). The BodyFat heuristic
+                // already routes empty/unknown to a wider-confidence midpoint.
                 segmentPicker(label: "Sex", selection: $sex, options: [
-                    ("m", "Male"), ("f", "Female"), ("x", "Prefer not")
+                    ("m", "Male"), ("f", "Female"), ("", "Prefer not")
                 ])
 
                 wheelGroup(label: "Height") {
@@ -314,11 +328,16 @@ struct OnboardingFlow: View {
                 .foregroundStyle(Theme.Palette.bone)
 
             HStack(alignment: .lastTextBaseline, spacing: 8) {
-                Text("\(goalKcal)")
+                // Thousands separator so a 4-digit goal reads "2,200"
+                // instead of the cramped "2200" — matches the formatting
+                // used everywhere else (TodayView hero, etc.)
+                Text(goalKcal.formatted(.number))
                     .font(Theme.Font.serif(88, weight: .medium))
                     .foregroundStyle(Theme.Palette.voltage)
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(goalKcal)))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                 Text("kcal")
                     .font(Theme.Font.serif(24, weight: .regular, italic: true))
                     .foregroundStyle(Theme.Palette.smoke)
@@ -329,6 +348,8 @@ struct OnboardingFlow: View {
                 set: { goalKcal = (Int($0) / 50) * 50 }
             ), in: 1200...4000, step: 50)
             .tint(Theme.Palette.voltage)
+            .accessibilityLabel("Daily calorie target")
+            .accessibilityValue("\(goalKcal.formatted(.number)) kilocalories")
 
             HStack {
                 Text("1,200")
@@ -419,6 +440,13 @@ struct OnboardingFlow: View {
         newProfile.sex = sex
         newProfile.heightInches = Double(heightFeet * 12 + heightInches)
         newProfile.weightLbs = Double(weight)
+
+        // Mark the post-onboarding paywall as already shown — we just showed
+        // it as the last step of onboarding (`.ready` CTA → PaywallSheet).
+        // Without this guard, ContentView.maybeShowOnboardingPaywall() would
+        // re-present the same paywall the moment RootView swaps in the
+        // ContentView, hitting the user with the same screen twice in 800ms.
+        UserDefaults.standard.set(true, forKey: "vocal.didShowFirstPaywall")
 
         withAnimation(.easeOut(duration: 0.4)) {
             // completeOnboarding bundles profile + goal + flag + persist into one

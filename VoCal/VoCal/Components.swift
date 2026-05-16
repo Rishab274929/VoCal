@@ -46,7 +46,15 @@ struct CalorieRing: View {
     var size: CGFloat = 248
 
     private var progress: Double { min(1.0, Double(eaten) / Double(max(1, goal))) }
+    private var overshoot: Int { max(0, eaten - goal) }
+    private var isOver: Bool { eaten > goal }
     private var remaining: Int { max(0, goal - eaten) }
+
+    /// When eaten > goal, swap the voltage stroke for the coral pulse so the
+    /// user reads "over budget" instantly. Without this the ring just
+    /// completes silently and the center number says "0 KCAL LEFT" — no
+    /// signal at all that they actually went past.
+    private var strokeTint: Color { isOver ? Theme.Palette.pulse : Theme.Palette.voltage }
 
     var body: some View {
         ZStack {
@@ -59,12 +67,12 @@ struct CalorieRing: View {
             Circle()
                 .stroke(Theme.Palette.hairlineStrong, lineWidth: 10)
 
-            // Progress (voltage)
+            // Progress — voltage when on track, coral when over goal
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
                     AngularGradient(
-                        colors: [Theme.Palette.voltage.opacity(0.6), Theme.Palette.voltage, Theme.Palette.voltage],
+                        colors: [strokeTint.opacity(0.6), strokeTint, strokeTint],
                         center: .center,
                         startAngle: .degrees(0),
                         endAngle: .degrees(360)
@@ -73,19 +81,20 @@ struct CalorieRing: View {
                 )
                 .rotationEffect(.degrees(-90))
                 .animation(.easeOut(duration: 0.7), value: progress)
-                .shadow(color: Theme.Palette.voltage.opacity(0.45), radius: 18)
+                .animation(.easeOut(duration: 0.3), value: isOver)
+                .shadow(color: strokeTint.opacity(0.45), radius: 18)
 
             // Center stack
             VStack(spacing: 0) {
-                Text("\(remaining)")
+                Text("\(isOver ? overshoot : remaining)")
                     .font(Theme.Font.serif(size * 0.32, weight: .medium))
-                    .foregroundStyle(Theme.Palette.bone)
+                    .foregroundStyle(isOver ? Theme.Palette.pulse : Theme.Palette.bone)
                     .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(remaining)))
-                Text("KCAL LEFT")
+                    .contentTransition(.numericText(value: Double(isOver ? overshoot : remaining)))
+                Text(isOver ? "KCAL OVER" : "KCAL LEFT")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2.4)
-                    .foregroundStyle(Theme.Palette.smoke)
+                    .foregroundStyle(isOver ? Theme.Palette.pulse : Theme.Palette.smoke)
                     .padding(.top, 6)
                 HStack(spacing: 6) {
                     Text("\(eaten)")
@@ -102,6 +111,10 @@ struct CalorieRing: View {
             }
         }
         .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isOver
+            ? "Calorie ring — over goal by \(overshoot) kcal. \(eaten) eaten of \(goal) goal."
+            : "Calorie ring — \(remaining) kcal remaining. \(eaten) eaten of \(goal) goal.")
     }
 }
 
@@ -138,15 +151,23 @@ struct MacroBar: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.Palette.hairlineStrong)
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: max(2, geo.size.width * progress))
-                        .shadow(color: tint.opacity(0.4), radius: 6, y: 0)
-                        .animation(.easeOut(duration: 0.55), value: progress)
+                    // When eaten == 0, render 0pt fill — not the 2pt sliver
+                    // that would otherwise look like a stray dot next to the
+                    // hairline track. Below ~3pt the capsule renders fuzzy
+                    // anyway, so we floor at 3pt for any non-zero progress.
+                    if eaten > 0 {
+                        Capsule()
+                            .fill(tint)
+                            .frame(width: max(3, geo.size.width * progress))
+                            .shadow(color: tint.opacity(0.4), radius: 6, y: 0)
+                            .animation(.easeOut(duration: 0.55), value: progress)
+                    }
                 }
             }
             .frame(height: 4)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(eaten) of \(goal) grams")
     }
 }
 
@@ -211,11 +232,16 @@ struct MealCard: View {
                             .font(.system(size: 9))
                             .foregroundStyle(Theme.Palette.smoke)
                     }
-                    Spacer()
+                    Spacer(minLength: 8)
+                    // 4-digit single-meal kcal (e.g. 1,250 cheat burrito) can
+                    // squeeze the eyebrow/time row. lineLimit(1) + scale
+                    // protects without dropping the serif weight.
                     Text("\(meal.calories)")
                         .font(Theme.Font.serif(28, weight: .medium))
                         .foregroundStyle(Theme.Palette.bone)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
 
                 Text(meal.name)
@@ -319,6 +345,8 @@ struct MicButton: View {
             }
         }
         .accessibilityLabel("Log a meal with your voice")
+        .accessibilityHint("Opens the voice capture sheet")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -514,9 +542,14 @@ struct EditorialTabBar: View {
             // an offset. The old floating overlay was extending the
             // perceived bar height by ~30pt + the FAB's shadow radius, and
             // overhanging into content above. Inlined, it's just a button.
+            //
+            // Note: MicButton's rotating tick marks render at -(size*0.42)
+            // from the orb center. With size=52 that's ~22pt above the orb,
+            // so the slot needs vertical room — DON'T pull it up with a
+            // negative top padding (the old `-2` clipped the topmost tick
+            // against the bar's hairline border).
             MicButton(action: onMic, size: 52)
                 .frame(width: 86)
-                .padding(.top, -2)
             tabButton(.coach)
             tabButton(.profile)
         }
@@ -548,6 +581,8 @@ struct EditorialTabBar: View {
             .padding(.bottom, 2)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(tab.label)
+        .accessibilityAddTraits(active ? [.isSelected, .isButton] : [.isButton])
     }
 }
 

@@ -41,14 +41,16 @@ struct ProfileView: View {
                     Circle()
                         .strokeBorder(Theme.Palette.voltage, lineWidth: 2)
                         .frame(width: 64, height: 64)
-                    Text(initials(appModel.profile.displayName))
+                    Text(initials(displayedName))
                         .font(Theme.Font.serif(22, weight: .semibold, italic: true))
                         .foregroundStyle(Theme.Palette.bone)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(appModel.profile.displayName)
+                    Text(displayedName)
                         .font(Theme.Font.serif(28, weight: .medium))
                         .foregroundStyle(Theme.Palette.bone)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     Text("Member · \(appModel.profile.entitlement.rawValue.uppercased())")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(1.8)
@@ -235,7 +237,16 @@ struct ProfileView: View {
 
     private func initials(_ name: String) -> String {
         let parts = name.split(separator: " ")
-        return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
+        let result = parts.prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
+        // Don't render an empty initials circle — a placeholder beats blank.
+        return result.isEmpty ? "VC" : result
+    }
+
+    /// Fallback so an unset displayName doesn't render as an empty hero or
+    /// initials circle (rare race: rehydrated state predates onboarding).
+    private var displayedName: String {
+        let n = appModel.profile.displayName.trimmingCharacters(in: .whitespaces)
+        return n.isEmpty ? "VoCal user" : n
     }
 }
 
