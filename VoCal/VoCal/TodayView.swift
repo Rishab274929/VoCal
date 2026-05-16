@@ -77,12 +77,15 @@ struct TodayView: View {
 
     private var serifLine: AttributedString {
         let remaining = appModel.totals.calorieRemaining
+        // Group the number with thousands separators so "1880" reads as "1,880"
+        // and the headline fits on two lines instead of three on iPhone 17 Pro.
+        let formatted = remaining.formatted(.number)
         var s = AttributedString("You have ")
         s.foregroundColor = Theme.Palette.smoke
-        var n = AttributedString("\(remaining) kcal")
+        var n = AttributedString("\(formatted) kcal")
         n.font = Theme.Font.serif(36, weight: .medium, italic: true)
         n.foregroundColor = Theme.Palette.voltage
-        var tail = AttributedString(" left in the day.")
+        var tail = AttributedString(" left today.")
         tail.foregroundColor = Theme.Palette.ash
         s.append(n)
         s.append(tail)
@@ -100,7 +103,7 @@ struct TodayView: View {
                 Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
                 statColumn(label: "GOAL", value: appModel.totals.calorieGoal, tint: Theme.Palette.ash)
                 Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
-                statColumn(label: "DEFICIT", value: max(0, appModel.totals.calorieGoal - appModel.totals.caloriesEaten), tint: Theme.Palette.voltage)
+                statColumn(label: "REMAINING", value: max(0, appModel.totals.calorieGoal - appModel.totals.caloriesEaten), tint: Theme.Palette.voltage)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

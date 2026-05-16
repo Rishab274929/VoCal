@@ -514,7 +514,11 @@ struct EditorialTabBar: View {
             tabButton(.coach)
             tabButton(.profile)
         }
-        .padding(.top, 14)
+        // Top padding includes headroom for the mic FAB that floats up out
+        // of the tab bar via .offset(y: -30). Without this, the floating
+        // button overhangs into the scroll content above and obscures the
+        // last row (the macro bars on Today).
+        .padding(.top, 44)
         .padding(.bottom, 6)
         .background(
             Theme.Palette.ink.opacity(0.96)
@@ -588,7 +592,10 @@ struct VoCalWordmark: View {
                 .foregroundStyle(Theme.Palette.voltage)
         }
         .fixedSize(horizontal: true, vertical: false)
-        .padding(.trailing, 4)
+        // Italic glyphs overshoot their typographic frame on both sides;
+        // adding hairline padding keeps the wordmark off the screen edge
+        // on rounded-corner devices (iPhone 17 Pro etc.).
+        .padding(.horizontal, 4)
     }
 }
 
