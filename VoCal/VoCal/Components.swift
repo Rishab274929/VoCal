@@ -288,25 +288,25 @@ struct MicButton: View {
                     .overlay(
                         Circle().strokeBorder(Theme.Palette.pulse, lineWidth: 2)
                     )
-                    .shadow(color: Theme.Palette.pulse.opacity(0.5), radius: 24)
+                    .shadow(color: Theme.Palette.pulse.opacity(0.4), radius: 12)
 
                 // Rotating tick marks (audio meter feel)
                 ZStack {
                     ForEach(0..<24, id: \.self) { i in
                         Rectangle()
                             .fill(Theme.Palette.pulse.opacity(i % 3 == 0 ? 0.9 : 0.25))
-                            .frame(width: 1, height: i % 3 == 0 ? 6 : 3)
-                            .offset(y: -32)
+                            .frame(width: 1, height: i % 3 == 0 ? 5 : 2.5)
+                            .offset(y: -26)
                             .rotationEffect(.degrees(Double(i) / 24 * 360))
                     }
                 }
                 .rotationEffect(.degrees(rotation))
 
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(Theme.Palette.bone)
             }
-            .frame(width: 78, height: 78)
+            .frame(width: 64, height: 64)
         }
         .buttonStyle(.plain)
         .onAppear {
@@ -510,16 +510,12 @@ struct EditorialTabBar: View {
             tabButton(.today)
             tabButton(.progress)
             // Mic slot (the actual button overlays this gap so the row stays evenly spaced)
-            Color.clear.frame(width: 86)
+            Color.clear.frame(width: 72)
             tabButton(.coach)
             tabButton(.profile)
         }
-        // Top padding includes headroom for the mic FAB that floats up out
-        // of the tab bar via .offset(y: -30). Without this, the floating
-        // button overhangs into the scroll content above and obscures the
-        // last row (the macro bars on Today).
-        .padding(.top, 44)
-        .padding(.bottom, 6)
+        .padding(.top, 8)
+        .padding(.bottom, 0)
         .background(
             Theme.Palette.ink.opacity(0.96)
                 .overlay(alignment: .top) {
@@ -529,7 +525,7 @@ struct EditorialTabBar: View {
         )
         .overlay(alignment: .top) {
             MicButton(action: onMic)
-                .offset(y: -30)
+                .offset(y: -22)
         }
     }
 
@@ -538,16 +534,16 @@ struct EditorialTabBar: View {
         return Button {
             selection = tab
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Image(systemName: tab.symbol)
-                    .font(.system(size: 18, weight: active ? .bold : .regular))
+                    .font(.system(size: 17, weight: active ? .bold : .regular))
                 Text(tab.label.uppercased())
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(1.2)
             }
             .foregroundStyle(active ? Theme.Palette.voltage : Theme.Palette.smoke)
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 8)
+            .padding(.bottom, 2)
         }
         .buttonStyle(.plain)
     }

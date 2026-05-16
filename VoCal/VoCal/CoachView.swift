@@ -2,17 +2,25 @@
 //  CoachView.swift
 //  VoCal
 //
-//  Voice-first nutrition coach. Big serif intro, message thread,
-//  composer with mic-first input. Calls backend /api/coach when wired;
-//  uses heuristic replies offline so the demo always feels alive.
+//  Voice-first nutrition coach. Tap-and-talk via VoiceCoachSession:
+//   - mic button starts continuous on-device STT
+//   - after a 1.5s silence the transcript flushes to the backend /api/coach
+//   - the reply is rendered in the thread AND read aloud via AVSpeechSynthesizer
+//   - typed input also works for accessibility / quiet rooms
 //
 
 import SwiftUI
 
 struct CoachView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var session = VoiceCoachSession()
     @State private var input: String = ""
-    @State private var isThinking = false
+
+    /// Combined transcript: AppModel's persisted history + this session's
+    /// in-memory turns. Lets the user pick up a conversation across launches.
+    private var allMessages: [CoachMessage] {
+        appModel.coachMessages + session.history
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,20 +32,20 @@ struct CoachView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         introBlock
-                        ForEach(appModel.coachMessages) { msg in
+                        ForEach(allMessages) { msg in
                             CoachBubble(role: msg.role, content: msg.content)
                                 .id(msg.id)
                         }
-                        if isThinking {
-                            HStack(spacing: 6) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(Theme.Palette.voltage)
-                                Text("thinking…")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Theme.Palette.smoke)
-                            }
-                            .padding(.leading, 16)
+                        if !session.liveTranscript.isEmpty && session.phase == .listening {
+                            // Show the live partial transcript as a pending user bubble.
+                            CoachBubble(role: .user, content: session.liveTranscript + " …")
+                                .opacity(0.55)
+                        }
+                        if session.phase == .thinking {
+                            statusRow("Coach is thinking…")
+                        }
+                        if session.phase == .speaking {
+                            statusRow("Speaking…")
                         }
                     }
                     .padding(.horizontal, 24)
@@ -45,8 +53,8 @@ struct CoachView: View {
                     .padding(.bottom, 18)
                 }
                 .scrollIndicators(.hidden)
-                .onChange(of: appModel.coachMessages.count) { _, _ in
-                    if let last = appModel.coachMessages.last {
+                .onChange(of: allMessages.count) { _, _ in
+                    if let last = allMessages.last {
                         withAnimation(.spring) {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
@@ -58,6 +66,18 @@ struct CoachView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 16)
         }
+        .onDisappear { session.cancel() }
+        .onChange(of: session.history.count) { _, _ in
+            // Mirror VoiceCoachSession turns into the persisted AppModel
+            // history so they survive force-quit. Only append the newest
+            // turn (history index N-1) to avoid quadratic appends.
+            guard let latest = session.history.last else { return }
+            // De-dupe: if the last persisted message has the same content
+            // already, skip.
+            if appModel.coachMessages.last?.content != latest.content {
+                appModel.appendCoach(latest)
+            }
+        }
     }
 
     private var header: some View {
@@ -66,17 +86,63 @@ struct CoachView: View {
                 Text("COACH")
                     .eyebrow(Theme.Palette.pulse)
                 Spacer()
-                HStack(spacing: 6) {
-                    Circle().fill(Theme.Palette.voltage).frame(width: 6, height: 6)
-                    Text("on duty")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Theme.Palette.smoke)
-                }
+                statusBadge
             }
             Text("Talk to it. It knows your day.")
                 .font(Theme.Font.serif(28, weight: .medium))
                 .foregroundStyle(Theme.Palette.bone)
         }
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch session.phase {
+        case .idle:
+            HStack(spacing: 6) {
+                Circle().fill(Theme.Palette.voltage).frame(width: 6, height: 6)
+                Text("on duty")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.smoke)
+            }
+        case .listening:
+            HStack(spacing: 6) {
+                Circle().fill(Theme.Palette.pulse).frame(width: 6, height: 6)
+                    .scaleEffect(1.0)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(), value: session.phase)
+                Text("LISTENING")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.Palette.pulse)
+            }
+        case .thinking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini).tint(Theme.Palette.voltage)
+                Text("THINKING")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.Palette.voltage)
+            }
+        case .speaking:
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.Palette.voltage)
+                Text("SPEAKING")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.Palette.voltage)
+            }
+        }
+    }
+
+    private func statusRow(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            ProgressView().controlSize(.small).tint(Theme.Palette.voltage)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Palette.smoke)
+        }
+        .padding(.leading, 16)
     }
 
     private var introBlock: some View {
@@ -85,13 +151,13 @@ struct CoachView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 16))
                     .foregroundStyle(Theme.Palette.voltage)
-                Text("Try asking")
+                Text(allMessages.isEmpty ? "Try saying" : "Or ask")
                     .eyebrow()
             }
             VStack(alignment: .leading, spacing: 8) {
                 suggestionPill("How do I hit 180g protein today?")
                 suggestionPill("What if I want pasta for dinner?")
-                suggestionPill("Why am I always hungry at 4pm?")
+                suggestionPill("What's a good 4pm snack?")
             }
         }
         .padding(.bottom, 4)
@@ -119,12 +185,12 @@ struct CoachView: View {
                 TextField(
                     "",
                     text: $input,
-                    prompt: Text("Ask anything…").foregroundStyle(Theme.Palette.smoke)
+                    prompt: Text("Ask anything, or tap the mic…").foregroundStyle(Theme.Palette.smoke)
                 )
                 .foregroundStyle(Theme.Palette.bone)
                 .textInputAutocapitalization(.sentences)
                 .submitLabel(.send)
-                .onSubmit { send() }
+                .onSubmit { sendTyped() }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -138,56 +204,52 @@ struct CoachView: View {
             )
 
             Button {
-                if input.isEmpty {
-                    // Mic mode (stub)
+                if !input.isEmpty {
+                    sendTyped()
                 } else {
-                    send()
+                    switch session.phase {
+                    case .listening: session.endTurn()
+                    case .speaking:  session.cancel()
+                    default:         session.startTurn()
+                    }
                 }
             } label: {
                 ZStack {
-                    Circle().fill(input.isEmpty ? Theme.Palette.pulse : Theme.Palette.voltage)
-                    Image(systemName: input.isEmpty ? "mic.fill" : "arrow.up")
+                    Circle().fill(micButtonTint)
+                    Image(systemName: micButtonIcon)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Theme.Palette.ink)
                 }
                 .frame(width: 44, height: 44)
-                .shadow(color: (input.isEmpty ? Theme.Palette.pulse : Theme.Palette.voltage).opacity(0.4), radius: 12)
+                .shadow(color: micButtonTint.opacity(0.4), radius: 12)
             }
             .buttonStyle(.plain)
         }
     }
 
-    private func send() {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        appModel.appendCoach(CoachMessage(role: .user, content: trimmed))
-        input = ""
-        isThinking = true
-        Task {
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            let reply = generateReply(for: trimmed)
-            await MainActor.run {
-                appModel.appendCoach(CoachMessage(role: .assistant, content: reply))
-                isThinking = false
-            }
+    private var micButtonTint: Color {
+        if !input.isEmpty { return Theme.Palette.voltage }
+        switch session.phase {
+        case .listening: return Theme.Palette.pulse
+        case .speaking:  return Theme.Palette.voltage
+        default:         return Theme.Palette.pulse
         }
     }
 
-    private func generateReply(for prompt: String) -> String {
-        let lower = prompt.lowercased()
-        let proteinShort = max(0, appModel.totals.proteinGoal - appModel.totals.proteinEaten)
-        let kcalLeft = appModel.totals.calorieRemaining
+    private var micButtonIcon: String {
+        if !input.isEmpty { return "arrow.up" }
+        switch session.phase {
+        case .listening: return "stop.fill"
+        case .speaking:  return "speaker.slash.fill"
+        default:         return "mic.fill"
+        }
+    }
 
-        if lower.contains("protein") {
-            return "You're at \(appModel.totals.proteinEaten)g of \(appModel.totals.proteinGoal)g protein — \(proteinShort)g short with \(kcalLeft) kcal left. A grilled chicken bowl from Cava (≈40g protein, ~520 kcal) or Chick-fil-A's grilled nuggets 12-ct (~38g protein, ~210 kcal) would clear most of it."
-        }
-        if lower.contains("pasta") || lower.contains("dinner") {
-            return "With \(kcalLeft) kcal to play with, a 2-cup serving of spaghetti pomodoro lands around 560 kcal. Add a 4 oz grilled chicken breast (~190 kcal, 35g protein) and you're at 750 kcal — well under budget, and you finish the day on protein."
-        }
-        if lower.contains("hungry") || lower.contains("snack") {
-            return "Could be a protein gap — you've leaned breakfast-heavy and light on protein at lunch. A Greek yogurt + handful of almonds (~250 kcal, 18g protein) usually kills the 4pm dip without ruining dinner."
-        }
-        return "I'm watching your day: \(appModel.totals.caloriesEaten) eaten, \(kcalLeft) remaining, \(appModel.totals.proteinEaten)g protein in. What were you thinking of having?"
+    private func sendTyped() {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        input = ""
+        session.sendTyped(trimmed)
     }
 }
 
