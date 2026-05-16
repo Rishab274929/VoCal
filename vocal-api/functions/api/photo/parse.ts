@@ -18,6 +18,7 @@
 import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env, VoiceParseResponse, ParsedMeal } from "../../../src/types";
 import { guessSlot } from "../../../src/lib/normalize";
+import { chat } from "../../../src/ai/llmClient";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -95,9 +96,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (b64.length > MAX_IMAGE_BYTES * 1.36) {
     return json({ error: "Image too large; resize to ~1.5MB before posting" }, 413);
   }
-  if (!env.OPENROUTER_API_KEY) {
-    return json({ error: "Vision model not configured (OPENROUTER_API_KEY missing)" }, 503);
-  }
+  // Vision provider pool: Wafer GLM-5.1 → Gemini Flash (free) → OpenRouter
+  // gpt-4o-mini. Configure multiple keys per provider with the *_API_KEYS
+  // plural (comma-separated) and the rotator falls through on 402/429/5xx.
 
   const userParts: Array<{ type: "text" | "image_url"; text?: string; image_url?: { url: string } }> = [
     { type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } }
@@ -109,38 +110,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   const started = Date.now();
-  let raw: string;
+  let raw = "";
+  let provider = "";
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://vocal.best",
-        "X-Title": "VoCal"
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
-        temperature: 0.1,
-        max_tokens: 1000,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userParts }
-        ]
-      })
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      return json({ error: `OpenRouter ${res.status}: ${txt.slice(0, 240)}` }, 502);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string | null } }>;
-    };
-    raw = data.choices?.[0]?.message?.content ?? "";
-    if (!raw) return json({ error: "OpenRouter returned empty content" }, 502);
+    const result = await chat({
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userParts }
+      ],
+      responseFormat: "json_object",
+      maxTokens: 1500,
+      temperature: 0.1,
+      needsVision: true
+    }, env);
+    raw = result.content;
+    provider = `${result.provider}/${result.model}`;
   } catch (err) {
-    return json({ error: `Vision call failed: ${(err as Error).message}` }, 502);
+    return json({ error: `All vision providers failed. ${(err as Error).message}` }, 502);
   }
 
   const parsed = safeJson<LLMMealOutput>(raw);
@@ -171,17 +157,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       transcript: payload.voice_context ?? "",
       follow_up_question: null,
       meal,
-      reasoning: `Parsed photo via gpt-4o-mini in ${Date.now() - started}ms.`
+      reasoning: `Parsed photo via ${provider} in ${Date.now() - started}ms.`
     };
     return json(response, 200);
   }
 
+  // No fabricated stub: when the model can't produce valid macros we ask
+  // the user for a verbal cue instead of inventing numbers.
   return json({
     transcript: payload.voice_context ?? "",
-    follow_up_question: null,
+    follow_up_question: "I couldn't read the plate confidently — what's the main food and rough portion?",
     meal: null,
     reasoning: "Vision model output didn't match the expected JSON schema."
-  } satisfies VoiceParseResponse, 422);
+  } satisfies VoiceParseResponse, 200);
 };
 
 function isValidMeal(p: LLMMealOutput): boolean {

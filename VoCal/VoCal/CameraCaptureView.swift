@@ -77,6 +77,13 @@ struct MealPhotoSheet: View {
     @State private var followUpAnswer = ""
     @State private var savedMeal: MealEntry?
 
+    /// Spoken description of the plate. The photo is decorative — this
+    /// transcript is what we actually send to /api/voice/parse for the
+    /// conversational refine loop.
+    @State private var description: String = ""
+    @State private var lastReasoning: String = ""
+    @StateObject private var recorder = SpeechRecorder()
+
     var body: some View {
         ZStack {
             Theme.Palette.ink.ignoresSafeArea()
@@ -104,16 +111,31 @@ struct MealPhotoSheet: View {
         .sheet(isPresented: $showingCamera) {
             CameraPicker(source: .camera) { picked in
                 image = picked
-                Task { await runFirstPass() }
+                startListening()
             }
             .ignoresSafeArea()
         }
         .sheet(isPresented: $showingLibrary) {
             CameraPicker(source: .library) { picked in
                 image = picked
-                Task { await runFirstPass() }
+                startListening()
             }
             .ignoresSafeArea()
+        }
+        .onDisappear { recorder.stop() }
+        .onChange(of: recorder.partialTranscript) { _, new in
+            if recorder.isRecording { description = new }
+        }
+    }
+
+    /// Asks for mic + speech perms and starts continuous on-device STT
+    /// the moment the photo is captured. The user can stop and edit by
+    /// tapping the text field.
+    private func startListening() {
+        Task {
+            await recorder.requestAuthorization()
+            guard recorder.isAuthorized else { return }
+            try? recorder.start()
         }
     }
 
@@ -188,7 +210,7 @@ struct MealPhotoSheet: View {
             if parsing {
                 HStack(spacing: 8) {
                     ProgressView().tint(Theme.Palette.voltage).controlSize(.small)
-                    Text("Analyzing photo…")
+                    Text("Parsing your description…")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.Palette.smoke)
                 }
@@ -198,6 +220,71 @@ struct MealPhotoSheet: View {
                 FollowUpQuestionCard(question: q, answer: $followUpAnswer)
             } else if let m = firstPassMeal {
                 preCard(m)
+            } else {
+                // Pre-parse state: photo on top, mic + transcript below.
+                // The photo is decorative — what we actually send to the
+                // backend is the spoken description.
+                descriptionBlock
+            }
+        }
+    }
+
+    /// Mic + transcript composer. Routes through the same /api/voice/parse
+    /// the voice flow uses, so the model can ask the same smart follow-ups
+    /// ("Single scoop of guac?") on top of the picture.
+    private var descriptionBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text(recorder.isRecording ? "LIVE — say what's on the plate" : "DESCRIBE WHAT YOU'RE EATING")
+                    .eyebrow(recorder.isRecording ? Theme.Palette.pulse : Theme.Palette.smoke)
+                if recorder.isRecording {
+                    Circle()
+                        .fill(Theme.Palette.pulse)
+                        .frame(width: 6, height: 6)
+                        .scaleEffect(recorder.isRecording ? 1 : 0.5)
+                        .animation(.easeInOut(duration: 0.6).repeatForever(), value: recorder.isRecording)
+                }
+            }
+            TextField(
+                "",
+                text: $description,
+                prompt: Text("beans and rice, plus some chicken").foregroundStyle(Theme.Palette.smoke),
+                axis: .vertical
+            )
+            .lineLimit(2...4)
+            .foregroundStyle(Theme.Palette.bone)
+            .textInputAutocapitalization(.sentences)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 14)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    .fill(Theme.Palette.inkSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                            .strokeBorder(Theme.Palette.hairlineStrong, lineWidth: 1)
+                    )
+            )
+            HStack(spacing: 10) {
+                Button {
+                    if recorder.isRecording {
+                        _ = recorder.finish()
+                    } else {
+                        startListening()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(recorder.isRecording ? "Stop" : "Hold to speak")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.Palette.ink)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(recorder.isRecording ? Theme.Palette.pulse : Theme.Palette.voltage))
+                }
+                .buttonStyle(.plain)
+                Spacer()
             }
         }
     }
@@ -268,74 +355,98 @@ struct MealPhotoSheet: View {
                 firstPassMeal = nil
                 followUpQuestion = nil
                 followUpAnswer = ""
+                description = ""
+                lastReasoning = ""
+                recorder.stop()
             }
-            VoltageButton(title: followUpQuestion == nil ? "Save" : "Submit", icon: followUpQuestion == nil ? "checkmark" : "arrow.right") {
-                if followUpQuestion == nil { commit() }
-                else { Task { await answerFollowUp() } }
+            if firstPassMeal == nil && followUpQuestion == nil {
+                // Pre-parse: send the spoken description through /api/voice/parse.
+                VoltageButton(title: "Parse", icon: "arrow.right") {
+                    Task { await parseDescription() }
+                }
+                .opacity(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
+                .allowsHitTesting(!description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } else if let _ = followUpQuestion {
+                // Backend asked a refining question — submit the answer.
+                VoltageButton(title: "Submit", icon: "arrow.right") {
+                    Task { await answerFollowUp() }
+                }
+                .opacity(followUpAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
+                .allowsHitTesting(!followUpAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } else {
+                // Parsed cleanly — save it.
+                VoltageButton(title: "Save", icon: "checkmark") {
+                    commit(source: .voicePhoto)
+                }
             }
-            .opacity((followUpQuestion != nil && followUpAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? 0.4 : 1)
-            .allowsHitTesting(followUpQuestion == nil || !followUpAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 
     // MARK: AI pipeline
     //
-    // Two-shot flow:
-    //   1. First pass with only the image → backend gpt-4o-mini parses
-    //      visible ingredients and returns either a meal or a follow-up
-    //      question ("Anything underneath I can't see?").
-    //   2. If a follow-up came back, the user types their answer and we
-    //      submit the SAME image plus the answer as `voice_context`. The
-    //      vision model re-parses with the hidden-layer hint.
+    // The photo is decorative. The spoken description (`description`) is
+    // what we send to /api/voice/parse — the same conversational engine
+    // VoiceCaptureSheet uses. That endpoint already knows how to ask smart
+    // follow-ups ("Single scoop of guac?"), so the photo flow gets refine
+    // loops for free.
+    //
+    // A real plate-vision pass is still available via /api/photo/parse
+    // (Wafer GLM-5.1 → OpenRouter gpt-4o-mini), but is intentionally not
+    // wired here yet — the spoken description outperforms a pure photo
+    // parse for most plates.
 
-    private func runFirstPass() async {
-        guard let img = image else { return }
+    private func parseDescription() async {
+        let transcript = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else { return }
+        // Flush mic if still capturing — get the user's final words in.
+        if recorder.isRecording {
+            let final = recorder.finish()
+            if !final.isEmpty { description = final }
+        }
         parsing = true
         defer { parsing = false }
         do {
-            let response = try await PhotoParseAPI.parse(image: img, voiceContext: nil)
+            let response = try await VoiceParseAPI.parse(
+                transcript: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                followUp: nil
+            )
+            lastReasoning = response.reasoning
             if let q = response.follow_up_question, response.meal == nil {
-                firstPassMeal = nil
                 followUpQuestion = q
             } else if let meal = response.meal {
                 firstPassMeal = meal
-                followUpQuestion = nil
             } else {
-                firstPassMeal = .init(
-                    name: "Photo unparsed",
-                    detail: "Try the voice flow instead, or try again with a clearer shot.",
-                    kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
-                    slot: "snack", source: "photo", confidence: 0.0
-                )
+                followUpQuestion = "Could you add a portion size or brand name?"
             }
         } catch {
-            firstPassMeal = .init(
-                name: "Photo parse failed",
-                detail: error.localizedDescription,
-                kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0,
-                slot: "snack", source: "photo", confidence: 0.0
-            )
+            followUpQuestion = "Couldn't reach the server. Add a brand or portion and try again?"
         }
     }
 
     private func answerFollowUp() async {
-        guard let img = image else { return }
         parsing = true
         defer { parsing = false }
         let answer = followUpAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let response = try await PhotoParseAPI.parse(image: img, voiceContext: answer)
+            let response = try await VoiceParseAPI.parse(
+                transcript: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                followUp: answer
+            )
+            lastReasoning = response.reasoning
             if let meal = response.meal {
                 firstPassMeal = meal
                 followUpQuestion = nil
-                commit(meal: meal, source: .voicePhoto)
+            } else if let q = response.follow_up_question {
+                // Server wants another round — keep refining.
+                followUpQuestion = q
+                followUpAnswer = ""
             } else {
-                // Backend wants another follow-up. Show it; user can answer again.
-                followUpQuestion = response.follow_up_question
+                followUpQuestion = "Still not enough info to log. Add a brand or portion?"
                 followUpAnswer = ""
             }
         } catch {
-            followUpQuestion = "Couldn't reach the vision model. Tap Save to log a rough estimate, or Retake to try again."
+            followUpQuestion = "Couldn't reach the server. Try a brand or portion size?"
+            followUpAnswer = ""
         }
     }
 

@@ -58,7 +58,10 @@ struct VoiceCaptureSheet: View {
             .padding(.bottom, 24)
         }
         .onAppear {
-            transcriptDraft = MockData.voicePrompts[promptIndex]
+            // Do NOT pre-fill `transcriptDraft` with a tutorial prompt — the
+            // "TRY SAYING" pill rotates independently below, and pre-filling
+            // here used to get parsed as the actual meal if the rotator
+            // overwrote what the user said before they hit Stop.
             startPromptRotator()
             startRecordingIfPossible()
         }
@@ -424,11 +427,12 @@ struct VoiceCaptureSheet: View {
         promptRotator?.invalidate()
         promptRotator = Timer.scheduledTimer(withTimeInterval: 2.6, repeats: true) { _ in
             Task { @MainActor in
+                // Only rotate the `promptIndex` (drives the "TRY SAYING" pill).
+                // NEVER touch `transcriptDraft` here — overwriting the live
+                // transcription every 2.6s caused the bug where the user said
+                // "one monster" and got parsed as "medium fry from McDonald's".
                 withAnimation(.easeInOut) {
                     promptIndex = (promptIndex + 1) % MockData.voicePrompts.count
-                    if phase == .listening {
-                        transcriptDraft = MockData.voicePrompts[promptIndex]
-                    }
                 }
             }
         }

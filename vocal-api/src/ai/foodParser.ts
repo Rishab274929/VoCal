@@ -56,17 +56,11 @@ interface LLMMealOutput {
   reasoning?: string;
 }
 
-const GENERIC_FALLBACK: ParsedMeal = {
-  name: "Meal from Voice",
-  detail: "Could not parse with confidence; estimated fallback",
-  kcal: 450,
-  protein_g: 20,
-  carbs_g: 45,
-  fat_g: 20,
-  slot: "snack",
-  source: "voice",
-  confidence: 0.4
-};
+// The 450/20/45/20 generic stub was removed in iter 19. When all five
+// real-detection tiers (KV, Chipotle, chain canon, LLM, USDA) fail, we
+// return meal: null + a follow-up question instead of fabricating macros.
+// The iOS client treats a null meal as "ask me again" rather than logging
+// a phantom 450-kcal meal that doesn't match what the user said.
 
 export async function parseTranscript(
   transcript: string,
@@ -77,9 +71,9 @@ export async function parseTranscript(
   if (!trimmed) {
     return {
       transcript,
-      follow_up_question: null,
-      meal: { ...GENERIC_FALLBACK, confidence: 0 },
-      reasoning: "Empty transcript."
+      follow_up_question: "What did you eat?",
+      meal: null,
+      reasoning: "Empty transcript — please describe the meal."
     };
   }
 
@@ -191,12 +185,13 @@ export async function parseTranscript(
     }
   }
 
-  // 5. Generic fallback
+  // 5. No tier was confident enough. Return meal: null so the iOS client
+  // can ask the user to be more specific instead of logging a fake meal.
   return {
     transcript,
-    follow_up_question: null,
-    meal: { ...GENERIC_FALLBACK, slot: guessSlot() },
-    reasoning: "No matcher confident enough; returned generic fallback."
+    follow_up_question: "I'm not sure what that is — could you describe it with portions or a brand?",
+    meal: null,
+    reasoning: "No matcher confident enough. Refusing to fabricate macros."
   };
 }
 
