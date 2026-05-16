@@ -1,0 +1,20 @@
+[
+  {
+    "task_id": "RES-NBA-FINALS",
+    "title": "Did the Celtics win the 2024 NBA Finals?",
+    "outcomes": ["Yes", "No"],
+    "resolved_outcome": {"value": ["Yes"], "resolved_at": "2024-06-18T03:00:00Z", "source": "NBA"}
+  },
+  {
+    "task_id": "RES-2024-CPI",
+    "title": "Was the May 2024 US CPI YoY below 3.5%?",
+    "outcomes": ["Yes", "No"],
+    "resolved_outcome": {"value": ["Yes"], "resolved_at": "2024-06-12T13:30:00Z", "source": "BLS"}
+  },
+  {
+    "task_id": "RES-EURO-2024",
+    "title": "Which country won Eurovision 2024?",
+    "outcomes": ["Switzerland", "Croatia", "Ukraine", "France", "Other"],
+    "resolved_outcome": {"value": ["Switzerland"], "resolved_at": "2024-05-11T22:00:00Z", "source": "Eurovision"}
+  }
+]

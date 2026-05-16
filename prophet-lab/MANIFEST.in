@@ -1,0 +1,9 @@
+include README.md
+include config.yaml
+include requirements.txt
+include run.sh
+include .env.example
+recursive-include sigma_prophet *.py
+recursive-include docs *.md
+recursive-include examples *.json
+recursive-include scripts *.sh
