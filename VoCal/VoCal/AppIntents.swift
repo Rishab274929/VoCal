@@ -148,6 +148,7 @@ enum VoiceParseAPI {
         // Match VoiceCaptureSheet; LLM path can be ~5-8s.
         request.timeoutInterval = 15
         request.httpBody = try JSONEncoder().encode(VoiceParsePayload(transcript: transcript, follow_up_answer: followUp))
+        await AuthSession.shared.authorize(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {

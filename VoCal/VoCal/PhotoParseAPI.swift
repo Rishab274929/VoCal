@@ -53,6 +53,7 @@ enum PhotoParseAPI {
         // Vision LLMs can take 5-15s on a busy plate; give them headroom.
         req.timeoutInterval = 30
         req.httpBody = body
+        await AuthSession.shared.authorize(&req)
 
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw Error.malformed }

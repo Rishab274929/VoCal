@@ -39,6 +39,11 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.35), value: appModel.hasCompletedOnboarding)
         .task {
+            // Best-effort anonymous sign-in. Triggers a /api/auth/anonymous
+            // call on first launch and refreshes the JWT if our cached one
+            // is close to expiry. Network failure is non-fatal — the rest
+            // of the app falls back to unauthenticated requests.
+            _ = try? await AuthSession.shared.currentToken()
             await VoCalHealth.shared.requestAuthorization()
         }
     }

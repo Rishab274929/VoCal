@@ -381,6 +381,7 @@ enum BarcodeAPI {
         }
         var req = URLRequest(url: url)
         req.timeoutInterval = 8
+        await AuthSession.shared.authorize(&req)
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw Error.badResponse }
         if http.statusCode == 404 { throw Error.notFound }

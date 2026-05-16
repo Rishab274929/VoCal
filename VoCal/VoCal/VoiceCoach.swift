@@ -294,6 +294,7 @@ enum CoachAPI {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 30
         req.httpBody = try JSONEncoder().encode(payload)
+        await AuthSession.shared.authorize(&req)
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw Error.badResponse }
         if !(200..<300).contains(http.statusCode) {

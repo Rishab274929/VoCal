@@ -184,3 +184,48 @@ The original audit's core finding — "the food parser only knows 4 hardcoded ph
 §13 progress: checks 2, 3, 4 (the three killer voice demos) now have a fully working end-to-end production pipeline — both the iOS app (Tier 0) AND the deployed backend produce correct macros for them. Check 14 (vocal.best /terms /privacy /support all 200) confirmed live. The bodyfat, coach, meals, auth, health endpoints from the stash are deployed too, ready for the iOS app to call.
 
 Next: build iOS archive for TestFlight (check 15) — needs Apple Developer credentials we don't have in this session, so the user will need to take it over for that step OR open Xcode and Archive manually.
+
+### Iteration 15 — live-simulator audit, barcode, photo, voice coach
+
+Drove the app in the iPhone 17 Pro simulator and iterated through bugs caught visually + via screenshots. Plus shipped three brand-new flows the user asked for.
+
+- **Barcode scanning**: `BarcodeScannerSheet.swift` wraps `AVCaptureSession` + `AVCaptureMetadataOutput` for EAN-8/13, UPC-A/E, GTIN-14, Code128/39/93, QR, PDF417. Voltage reticle, haptic on detect, simulator falls back to manual text-entry. Backend route `/api/barcode/:code` queries USDA FoodData Central Branded (matched by GTIN-UPC, scaled to one serving). Open Food Facts is the documented fallback but 525s from Cloudflare Workers — iOS calls OFF directly from `BarcodeAPI.fetchOpenFoodFacts` as the backend's understudy.
+- **Photo scanning**: `PhotoParseAPI.swift` resizes captured photos to 768px longest-edge, JPEG-encodes at 0.7 quality, base64s, and POSTs to `/api/photo/parse`. Backend forwards image + optional voice context to OpenRouter gpt-4o-mini in JSON-mode, validates the macro response, returns same `VoiceParseResponse` shape as the voice flow. `MealPhotoSheet`'s stubbed "Layered salad bowl" hardcode is gone — first pass + optional follow-up + final commit are all real LLM calls now.
+- **Conversational voice coach**: `VoiceCoach.swift` ships `VoiceCoachSession` (ObservableObject + AVSpeechSynthesizerDelegate). Tap-to-talk fires `SpeechRecorder` on-device STT, auto-stops on 1.5s silence, sends transcript + 8-turn history + today's `DailyMacrosSnapshot` to `/api/coach`, then reads the reply aloud via `AVSpeechSynthesizer`. Backend `/api/coach` rewritten to actually call Wafer GLM-5.1 with a coach-specific system prompt grounded in the day-state. Live test on `vocal.best`: "How do I hit 180g of protein today?" → asks for clarification on the 180-vs-160 mismatch using real 84/160g (3.1s). Follow-up "What about pasta?" → carries the 76g gap context forward (5.8s).
+
+### Iteration 16 — UI bugs caught from simctl screenshots
+
+Drove the app via `simctl io screenshot` + `cliclick`. Caught and fixed:
+- **VoCal wordmark italic V clipped** on the screen corner — top-left of every screen. Added `.padding(.horizontal, 4)` to `VoCalWordmark`. (Earlier iter only fixed trailing; italic glyphs overshoot both sides.)
+- **"DEFICIT" mislabeled** as the calorie-ring stat. It's "REMAINING" — `max(0, goal - eaten)` is what you have LEFT to eat, not a deficit. Renamed.
+- **Hero copy wrapped weirdly** — "You have 1880 kcal left in the day." landed on three lines. Reformatted to "You have 1,880 kcal left today." (thousands separator + shorter tail) — two lines.
+- **Floating mic FAB overlapped scroll content** on Today. First attempt: bumped tab bar's top padding 14→44pt. Wrong fix — made the bar too tall. User flagged it. Reverted, then found the right fix in `stash@{0}` from the earlier ralph loop: inline the `MicButton` into the tab bar's center slot rather than floating it via `.overlay { ... .offset(y: -30) }`. Applied: tab bar is now ~50pt tall, mic sits inline at size 52, macros section is fully visible.
+- **Universal left-edge clipping** — wordmark, every eyebrow ("EVENING · ERIC", "MACROS", "CARBS", "FAT", "ENTRIES", "YOU"), and the big serif numbers ("1,880", "320", "2,200") were all losing their first character at the screen left edge. Two changes: bumped all top-level container paddings 24→28pt across TodayView/ProfileView/HistoryView/CoachView/OnboardingFlow/PaywallSheet/VoiceCaptureSheet/BarcodeScannerSheet/BodyFatPhotoSheet/CameraCaptureView, plus added `.padding(.leading, 1)` inside the `.eyebrow()` modifier to compensate for `.tracking(1.6)` pushing the first glyph past its frame. Verified: every previously-clipped element renders fully on iPhone 17 Pro.
+
+### Iteration 17 — real StoreKit 2 paywall + post-onboarding trigger
+
+`PaywallSheet` was a stub that flipped `appModel.profile.entitlement = .pro` without ever touching Apple. Now:
+
+- `StoreKitStore.swift`: full StoreKit 2 wrapper. Loads `com.EricSpencer.VoCal.pro.monthly` ($4.99/mo) and `com.EricSpencer.VoCal.pro.annual` ($39.99/yr with 1-week trial) via `Product.products(for:)`. Subscribes to `Transaction.updates` for renewals + restores + sandbox transactions. Exposes `hasPro` from `Transaction.currentEntitlements` so the UI is reactive.
+- `PaywallSheet` rewritten: prices come from `Product.displayPrice` (live from StoreKit, not hardcoded), Subscribe button calls `product.purchase()` and surfaces verification, Restore calls `AppStore.sync()` and re-checks entitlements, sheet auto-dismisses the moment `hasPro` flips true (regardless of whether that's a fresh purchase or a restore from another device).
+- `VoCal.storekit` config file: defines both products + 7-day free trial on annual, with full localizations. Lets the iPhone 17 Pro simulator render real prices without App Store Connect — toggle in Scheme → Run → Options → StoreKit Configuration.
+- `ContentView` triggers `showingPaywall = true` once on first cold launch after `hasCompletedOnboarding` flips to true. Gated by `UserDefaults` so it doesn't spam returning users.
+- `docs/payments-setup.md`: full instructions for App Store Connect IAP setup (Agreements/Tax/Banking must be active, subscription group "VoCal Pro", both products, introductory offer on annual, screenshot for review), TestFlight sandbox testing (Settings → App Store → Sandbox Account), and how to swap in RevenueCat later. The Claude-mode classifier blocked the agent from creating the project in the user's RC dashboard, so RC remains a documented next step rather than wired.
+
+### Iteration 18 — anonymous sign-in (closes the auth gap)
+
+`/api/auth/anonymous` was sitting on the backend untouched by iOS. Now wired end-to-end:
+
+- `AuthSession.swift`: `@MainActor` singleton. On launch reads a cached JWT from the Keychain. On first launch (or expired token) POSTs `{device_id}` to `/api/auth/anonymous` and persists the returned `{user_id, token, expires_at}` in the Keychain via a 30-line `Keychain` helper (uses `kSecAttrAccessibleAfterFirstUnlock`). Coalesces concurrent fetches via a `pendingFetch: Task` so the app never fires more than one auth request in flight.
+- `authorize(&request)` helper stamps `Authorization: Bearer <token>` on outgoing URLRequests. Wired into every backend client: `VoiceCaptureSheet.VoiceAPIClient`, `AppIntents.VoiceParseAPI`, `VoiceCoach.CoachAPI`, `PhotoParseAPI`, `BarcodeAPI.fetchBackend`.
+- `VoCalApp.RootView.task` kicks off `AuthSession.shared.currentToken()` in the background on launch so the JWT is warm before the user reaches any feature. Network failure is non-fatal — the rest of the app falls back to unauthenticated requests, which still hit the chain canon and on-device food canon fine.
+- Live test against `vocal.best`: anonymous endpoint returns a 168-char JWT, token attaches cleanly to `/api/voice/parse`, "medium fry from McDonalds" still resolves through chain canon at 320 kcal. End-to-end auth in production.
+
+§13 progress snapshot:
+- ✅ Check 14: vocal.best, /terms, /privacy, /support — all 200, deployed
+- ✅ Check 13 partial: D1 wiring exists in /api/auth/anonymous + /api/voice/parse for meal persistence
+- 🟡 Checks 2-4 (voice killer demos): backend resolves them correctly; iOS Tier-0 canon resolves common foods; needs a real-device test pass for the full happy path
+- 🟡 Check 1: cold launch → onboarding → paywall → home all work; SiwA replaces anon when wired later
+- 🟡 Check 15: TestFlight processed build pending the Apple Developer credentials handoff
+
+Ralph loop's "4-5 iteration" budget consumed. Closing out.
