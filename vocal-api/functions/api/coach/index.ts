@@ -1,88 +1,162 @@
-// POST /api/coach  — voice nutrition coach. Heuristic responses today;
-// swaps to Claude Sonnet 4.6 the moment an Anthropic key is set.
+// POST /api/coach
+//
+// Conversational nutrition coach. The iOS app sends:
+//   { prompt, history[], totals? }
+//
+// We forward to the same LLM (Wafer GLM-5.1) used by /api/voice/parse,
+// with a coach-specific system prompt that grounds the reply in the
+// user's day. Replies are 1-3 sentences, conversational (read aloud
+// via AVSpeechSynthesizer on the iOS side), and never moralizing.
+//
+// Falls back to a heuristic reply if the LLM is unavailable — covers
+// the killer-demo path on a dead network.
 
-interface CoachBody {
-  user_id?: string;
-  prompt: string;
-}
+import type { PagesFunction } from "@cloudflare/workers-types";
+import type { Env } from "../../../src/types";
+import { chat } from "../../../src/ai/llmClient";
 
-const json = (data: unknown, init?: ResponseInit): Response =>
-  new Response(JSON.stringify(data), {
-    ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization",
-      ...(init?.headers ?? {}),
-    },
-  });
-
-export const onRequestOptions = async (): Promise<Response> => {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization",
-    },
-  });
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
-export const onRequestPost: PagesFunction = async ({ request, env }) => {
-  const bindings = env as unknown as { DB?: D1Database };
+interface Totals {
+  calorie_goal: number;
+  calories_eaten: number;
+  protein_goal: number;
+  protein_eaten: number;
+  carbs_goal: number;
+  carbs_eaten: number;
+  fat_goal: number;
+  fat_eaten: number;
+}
+interface HistoryTurn { role: "user" | "assistant"; content: string; }
+interface CoachBody {
+  prompt?: string;
+  history?: HistoryTurn[];
+  totals?: Totals;
+  // Legacy support — older iOS clients sent just { user_id, prompt } and
+  // expected the server to fetch totals from D1.
+  user_id?: string;
+}
+
+const SYSTEM_PROMPT = `You are VoCal's nutrition coach. The user is mid-day,
+juggling protein and calories. Respond in 1-3 sentences, conversationally,
+the way a sports dietitian would — friendly but direct. Use real numbers
+from the day-state context when available; suggest specific menu items
+from common chains (Cava, Chick-fil-A, Chipotle, Starbucks) when relevant.
+
+Rules:
+- Never moralize about food choices. The user knows what they ate.
+- Never invent macros for a meal you weren't told about.
+- If the user asks something open-ended, ASK one clarifying question
+  back rather than guessing.
+- Keep replies short enough to be spoken aloud (~30 words).
+- Output plain text. Do not wrap in JSON or markdown.`;
+
+export const onRequestOptions: PagesFunction<Env> = async () => {
+  return new Response(null, { status: 204, headers: CORS });
+};
+
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   let body: CoachBody;
   try {
     body = (await request.json()) as CoachBody;
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
+    return json({ error: "Invalid JSON" }, 400);
+  }
+  const prompt = (body.prompt ?? "").trim();
+  if (!prompt) return json({ error: "prompt required" }, 400);
+
+  // --- Day-state context line (either from request or D1 fallback) ---
+  let context = "";
+  let fallbackTotals: Totals | undefined = body.totals;
+  if (body.totals) {
+    const t = body.totals;
+    const kcalLeft = Math.max(0, t.calorie_goal - t.calories_eaten);
+    const proteinShort = Math.max(0, t.protein_goal - t.protein_eaten);
+    context = `Day so far: ${t.calories_eaten} of ${t.calorie_goal} kcal (${kcalLeft} left). Protein ${t.protein_eaten} of ${t.protein_goal}g (${proteinShort}g short). Carbs ${t.carbs_eaten}g, fat ${t.fat_eaten}g.`;
+  } else {
+    const bindings = env as unknown as { DB?: D1Database };
+    if (bindings.DB) {
+      try {
+        const userId = body.user_id?.trim() || "demo-user";
+        const startTs = new Date(); startTs.setHours(0, 0, 0, 0);
+        const row = await bindings.DB.prepare(
+          `SELECT COALESCE(SUM(kcal),0) AS k, COALESCE(SUM(protein_g),0) AS p, COUNT(*) AS c
+           FROM meals WHERE user_id = ?1 AND logged_at >= ?2`
+        ).bind(userId, startTs.getTime()).first<{ k: number; p: number; c: number }>();
+        if (row) {
+          context = `Day so far: ${row.k ?? 0} kcal across ${row.c ?? 0} meals; ${row.p ?? 0}g protein.`;
+          fallbackTotals = {
+            calorie_goal: 2200, calories_eaten: row.k ?? 0,
+            protein_goal: 160,  protein_eaten: row.p ?? 0,
+            carbs_goal: 240,    carbs_eaten: 0,
+            fat_goal: 70,       fat_eaten: 0
+          };
+        }
+      } catch { /* swallow */ }
+    }
   }
 
-  const prompt = (body.prompt ?? "").trim();
-  if (!prompt) return json({ error: "prompt required" }, { status: 400 });
-
-  const userId = body.user_id?.trim() || "demo-user";
-
-  // Read today's macros from D1 so the reply can reference real numbers.
-  let kcalEaten = 0;
-  let proteinEaten = 0;
-  let mealsCount = 0;
+  // --- Call the LLM ---
+  const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: SYSTEM_PROMPT }
+  ];
+  if (context) messages.push({ role: "system", content: `Context — ${context}` });
+  for (const turn of (body.history ?? []).slice(-8)) {
+    if (turn.role === "user" || turn.role === "assistant") {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+  }
+  messages.push({ role: "user", content: prompt });
 
   try {
-    if (bindings.DB) {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const startTs = startOfDay.getTime();
-      const row = await bindings.DB.prepare(
-        `SELECT COALESCE(SUM(kcal),0) AS k, COALESCE(SUM(protein_g),0) AS p, COUNT(*) AS c
-         FROM meals WHERE user_id = ?1 AND logged_at >= ?2`,
-      ).bind(userId, startTs).first<{ k: number; p: number; c: number }>();
-      if (row) {
-        kcalEaten = row.k ?? 0;
-        proteinEaten = row.p ?? 0;
-        mealsCount = row.c ?? 0;
-      }
-    }
-  } catch {
-    // ignore
+    const result = await chat({ messages, maxTokens: 220, temperature: 0.4 }, env);
+    const reply = stripJsonNoise(result.content);
+    return json({ reply, provider: result.provider, model: result.model, latencyMs: result.latencyMs }, 200);
+  } catch (err) {
+    return json({
+      reply: heuristic(prompt, fallbackTotals),
+      provider: "fallback",
+      error: (err as Error).message
+    }, 200);
   }
-
-  const goal = 2200;
-  const remaining = Math.max(0, goal - kcalEaten);
-  const proteinGoal = 160;
-  const proteinShort = Math.max(0, proteinGoal - proteinEaten);
-
-  const lower = prompt.toLowerCase();
-  let reply: string;
-  if (lower.includes("protein")) {
-    reply = `You're at ${proteinEaten}g of ${proteinGoal}g protein — ${proteinShort}g short with ${remaining} kcal to spare. A Cava grilled chicken bowl (~520 kcal, 42g P) or Chick-fil-A grilled nuggets 12-ct (~210 kcal, 38g P) would close the gap.`;
-  } else if (lower.includes("pasta") || lower.includes("dinner")) {
-    reply = `${remaining} kcal left. A 2-cup serving of spaghetti pomodoro lands ~560 kcal; add a 4 oz grilled chicken breast (~190 kcal, 35g P) and you're under budget with protein covered.`;
-  } else if (lower.includes("hungry") || lower.includes("snack")) {
-    reply = `Could be a protein gap. A Greek yogurt + small handful of almonds (~250 kcal, 18g P) usually kills the dip without ruining dinner.`;
-  } else {
-    reply = `Today so far: ${kcalEaten} kcal across ${mealsCount} entries, ${proteinEaten}g protein. ${remaining} kcal remaining. What are you considering?`;
-  }
-
-  return json({ reply, context: { kcal_eaten: kcalEaten, protein_eaten: proteinEaten, meals: mealsCount } });
 };
+
+function stripJsonNoise(content: string): string {
+  // Some thinking models reply with chain-of-thought + JSON. Pull out the
+  // most likely "final answer" line.
+  const fenced = content.match(/```(?:json|markdown)?\s*([\s\S]*?)```/);
+  let text = (fenced?.[1] ?? content).trim();
+  // If the model wrapped the answer in { "reply": "..." }, unwrap it.
+  const objMatch = text.match(/^\{[\s\S]*"reply"\s*:\s*"([\s\S]+?)"[\s\S]*\}$/);
+  if (objMatch?.[1]) text = objMatch[1];
+  // Drop leading "Assistant:" or "Coach:" prefixes.
+  text = text.replace(/^(assistant|coach)\s*:\s*/i, "");
+  return text;
+}
+
+function heuristic(prompt: string, t: Totals | undefined): string {
+  const lower = prompt.toLowerCase();
+  const kcalLeft = t ? Math.max(0, t.calorie_goal - t.calories_eaten) : 1200;
+  const proteinShort = t ? Math.max(0, t.protein_goal - t.protein_eaten) : 60;
+  if (lower.includes("protein")) {
+    return `You have ${kcalLeft} kcal left and you're ${proteinShort}g short on protein. Try Cava's grilled chicken bowl (~520 kcal, 42g protein).`;
+  }
+  if (lower.includes("pasta") || lower.includes("dinner")) {
+    return `With ${kcalLeft} kcal to play with, a 2-cup pasta pomodoro is ~560 kcal. Add 4 oz grilled chicken (~190 kcal, 35g protein) and you're under budget.`;
+  }
+  if (lower.includes("hungry") || lower.includes("snack")) {
+    return `Likely a protein gap. Greek yogurt + a handful of almonds (~250 kcal, 18g protein) usually does it.`;
+  }
+  return `So far: ${t?.calories_eaten ?? 0} kcal eaten, ${kcalLeft} left, ${t?.protein_eaten ?? 0}g protein. What are you thinking of?`;
+}
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS }
+  });
+}
