@@ -234,20 +234,20 @@ Tap meal → present `MealExplodeSheet`. Layout:
 │                                          │
 │       kcal / protein / carbs / fat       │
 │                                          │
-│       [Edit]   [Delete]                  │
+│       [Delete]                           │
 └──────────────────────────────────────────┘
 ```
 
 - `explode.mp4` plays once on sheet appear, rate 1.2× (matching sotto). Loops once then freezes on last frame.
 - Ingredient chips stagger-reveal as the video plays (opacity + 12pt translate + 8pt blur out, fluid easing, 80ms per chip).
-- Chips come from the existing `ParsedMeal.components` field if present; if the meal lacks components, the sheet shows a single chip with the meal name and the explode video still plays.
-- Edit/Delete use existing `AppModel.removeMeal` and (new) `AppModel.replaceMeal` hooks.
+- Chips come from `MealEntry.components` (the new field added in Item.swift) if present; if the meal lacks components, the sheet shows a single chip with the meal name and the explode video still plays.
+- Delete uses existing `AppModel.removeMeal`. Edit is intentionally out of scope for v1 (no `replaceMeal`, no edit UX) — call site reserved for later.
 
 ### Touched files
 
 - `MealExplodeSheet.swift` — new file.
 - `TodayView.swift` — wire tap action.
-- `Item.swift` — add `Meal.components: [Meal.Component]?` (new nested struct with `name: String, grams: Double?, kcal: Int?`), and add `AppModel.replaceMeal(_:with:)`. Both are new — neither exists in the current `Item.swift`.
+- `Item.swift` — add `MealEntry.components: [MealEntry.Component]?` (new nested struct with `name: String, grams: Double?, kcal: Int?`). New — does not exist in the current `Item.swift`. (No `replaceMeal` — the sheet only needs read + delete in v1.)
 - `Components.swift` — add `IngredientChip`.
 
 ---
@@ -347,7 +347,7 @@ This spec ships green when:
 - `VoCal/VoCal/Components.swift` — add `BentoCard`, `AmbientVideoPlayer`, `IngredientChip`
 - `VoCal/VoCal/TodayView.swift` — bento layout + meal tap action
 - `VoCal/VoCal/OnboardingFlow.swift` — insert step 0 welcome
-- `VoCal/VoCal/Item.swift` — add `Meal.Component` struct + `Meal.components` field + `AppModel.replaceMeal`
+- `VoCal/VoCal/Item.swift` — add `MealEntry.Component` struct + `MealEntry.components` field
 - `VoCal/VoCal/VoCal.xcodeproj/project.pbxproj` — register `Resources/` folder reference, register new `MealExplodeSheet.swift`
 
 **Unchanged:**
