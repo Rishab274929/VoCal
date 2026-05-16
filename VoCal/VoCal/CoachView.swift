@@ -25,7 +25,7 @@ struct CoachView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 28)
                 .padding(.top, 18)
 
             ScrollViewReader { proxy in
@@ -48,7 +48,7 @@ struct CoachView: View {
                             statusRow("Speaking…")
                         }
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                     .padding(.top, 14)
                     .padding(.bottom, 18)
                 }
@@ -63,7 +63,7 @@ struct CoachView: View {
             }
 
             composer
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 28)
                 .padding(.bottom, 16)
         }
         .onDisappear { session.cancel() }

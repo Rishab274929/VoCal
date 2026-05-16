@@ -23,7 +23,7 @@ struct ProgressScreen: View {
                 pastDaysList
                 Color.clear.frame(height: 80)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
             .padding(.top, 18)
         }
         .scrollIndicators(.hidden)

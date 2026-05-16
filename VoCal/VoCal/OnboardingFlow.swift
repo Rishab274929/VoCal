@@ -28,7 +28,7 @@ struct OnboardingFlow: View {
             VStack(alignment: .leading, spacing: 0) {
                 progressDots
                     .padding(.top, 24)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
 
                 Spacer(minLength: 24)
 
@@ -41,13 +41,13 @@ struct OnboardingFlow: View {
                     case .ready: readyView
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 28)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()
 
                 footer
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                     .padding(.bottom, 28)
             }
         }

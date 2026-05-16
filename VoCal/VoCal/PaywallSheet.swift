@@ -45,7 +45,7 @@ struct PaywallSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 28)
                 .padding(.top, 20)
 
                 ScrollView {
@@ -54,14 +54,14 @@ struct PaywallSheet: View {
                         features
                         planPicker
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                     .padding(.top, 24)
                     .padding(.bottom, 24)
                 }
                 .scrollIndicators(.hidden)
 
                 footer
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                     .padding(.bottom, 24)
             }
         }

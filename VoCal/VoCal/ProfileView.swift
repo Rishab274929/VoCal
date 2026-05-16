@@ -22,7 +22,7 @@ struct ProfileView: View {
                 aboutFooter
                 Color.clear.frame(height: 24)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
             .padding(.top, 18)
         }
         .scrollIndicators(.hidden)

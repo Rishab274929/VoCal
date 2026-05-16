@@ -141,12 +141,19 @@ extension View {
     }
 
     /// Tracked, tiny, all-caps eyebrow text styling.
+    ///
+    /// `tracking(1.6)` distributes letter-spacing around each glyph, which
+    /// pushes the FIRST character ~0.8pt past its frame's leading edge.
+    /// On a left-aligned container at the screen edge that bleeds INTO
+    /// the screen's rounded corner / safe-area gutter, so we add a tiny
+    /// fixed leading offset to keep the first glyph fully inside.
     func eyebrow(_ color: Color = Theme.Palette.smoke) -> some View {
         self
             .font(Theme.Font.eyebrow)
             .tracking(1.6)
             .textCase(.uppercase)
             .foregroundStyle(color)
+            .padding(.leading, 1)
     }
 }
 
