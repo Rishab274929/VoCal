@@ -20,14 +20,28 @@ class AppModel extends ChangeNotifier {
   bool hasCompletedOnboarding;
   MealEntry? lastSavedMeal;
 
+  /// Idempotency window — the cooldown between accepting two saves of the
+  /// same logical meal. Matches iOS AppModel.dedupeWindow.
+  static const Duration _dedupeWindow = Duration(seconds: 2);
+
+  /// Wall-clock instant of the last accepted addMeal. Used to detect a
+  /// double-tap on Save independent of the meal's loggedAt (which may be
+  /// backdated for historical entries). Mirrors iOS lastAddMealAt.
+  DateTime? _lastAddMealAt;
+
   AppModel({
     required this.totals,
-    required this.meals,
+    required List<MealEntry> meals,
     required this.profile,
-    this.bodyMetrics = const [],
-    this.coachMessages = const [],
+    List<BodyMetric> bodyMetrics = const [],
+    List<CoachMessage> coachMessages = const [],
     this.hasCompletedOnboarding = true,
-  }) {
+  })  : meals = List.of(meals),
+        // Defensive copy so `const []` defaults can't poison the mutable
+        // accessor paths (addBodyMetric/appendCoach would throw
+        // UnsupportedError on a const list).
+        bodyMetrics = List.of(bodyMetrics),
+        coachMessages = List.of(coachMessages) {
     DailyMacrosSnapshot.writeFrom(totals);
   }
 
@@ -41,9 +55,54 @@ class AppModel extends ChangeNotifier {
       );
 
   /// Entry point used by main() at launch.
+  ///
+  /// Day-rollover guard: if the persisted snapshot was last written on a
+  /// prior calendar day, zero the *eaten* macros while preserving the *goals*
+  /// + meals history. Without this, opening the app at 12:01 AM would show
+  /// yesterday's calorie ring as still "1,180 / 2,200" instead of resetting
+  /// to today's "0 / 2,200". Mirrors iOS AppModel.fromPersistedOrEmpty().
   static Future<AppModel> fromPersistedOrEmpty() async {
     final snap = await Persistence.load() ?? AppStateSnapshot.empty();
-    return AppModel.fromSnapshot(snap);
+    final now = DateTime.now();
+    final saved = snap.totals.date;
+    final isToday = saved.year == now.year &&
+        saved.month == now.month &&
+        saved.day == now.day;
+    if (!isToday) {
+      snap.totals.date = now;
+      snap.totals.caloriesEaten = 0;
+      snap.totals.proteinEaten = 0;
+      snap.totals.carbsEaten = 0;
+      snap.totals.fatEaten = 0;
+    }
+    final model = AppModel.fromSnapshot(snap);
+    if (!isToday) {
+      // Persist the rolled-over totals so the App Intents / shared_preferences
+      // mirror see today's zeros rather than yesterday's leftovers.
+      model._persist();
+    }
+    return model;
+  }
+
+  /// Reset eaten macros if the day has flipped since the last update.
+  /// Call this from a lifecycle hook (e.g. AppLifecycleState.resumed) so a
+  /// phone left on overnight rolls over the next time the user opens the app.
+  /// Returns true if a rollover happened.
+  bool rolloverIfNewDay() {
+    final now = DateTime.now();
+    final d = totals.date;
+    final isToday =
+        d.year == now.year && d.month == now.month && d.day == now.day;
+    if (isToday) return false;
+    totals.date = now;
+    totals.caloriesEaten = 0;
+    totals.proteinEaten = 0;
+    totals.carbsEaten = 0;
+    totals.fatEaten = 0;
+    DailyMacrosSnapshot.writeFrom(totals);
+    _persist();
+    notifyListeners();
+    return true;
   }
 
   void _persist() {
@@ -62,15 +121,24 @@ class AppModel extends ChangeNotifier {
   }
 
   void addMeal(MealEntry meal) {
-    // Idempotency: ignore a save with the same name+kcal within 2s of the
-    // last save. Prevents double-taps on Save from logging twice.
-    if (meals.isNotEmpty) {
-      final recent = meals.first;
-      if (recent.name == meal.name &&
-          recent.calories == meal.calories &&
-          recent.loggedAt.difference(meal.loggedAt).inMilliseconds.abs() <
-              2000) {
-        return;
+    // Idempotency: ignore a save with the same name+kcal that arrived within
+    // _dedupeWindow of the previous accepted save. We compare wall-clock-now
+    // to _lastAddMealAt (not to meal.loggedAt) because loggedAt may be
+    // backdated for historical entries — a user-initiated "I forgot to log
+    // this morning's banana" should NOT be silently swallowed even if its
+    // name+kcal happen to match the last save.
+    //
+    // Also scan the top 3 of meals (insertion order, not loggedAt) so a
+    // recently-backdated entry at index 0 doesn't let a double-tap slip
+    // through on indexes 1/2. Mirrors iOS AppModel.addMeal logic exactly.
+    final now = DateTime.now();
+    final last = _lastAddMealAt;
+    if (last != null && now.difference(last) < _dedupeWindow) {
+      final recentSlice = meals.take(3);
+      for (final m in recentSlice) {
+        if (m.name == meal.name && m.calories == meal.calories) {
+          return;
+        }
       }
     }
     meals.insert(0, meal);
@@ -79,6 +147,7 @@ class AppModel extends ChangeNotifier {
     totals.carbsEaten += meal.carbs;
     totals.fatEaten += meal.fat;
     lastSavedMeal = meal;
+    _lastAddMealAt = now;
     DailyMacrosSnapshot.writeFrom(totals);
     _persist();
     notifyListeners();

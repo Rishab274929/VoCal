@@ -66,19 +66,30 @@ class SpeechRecorder extends ChangeNotifier {
     isRecording = true;
     notifyListeners();
 
-    await _stt.listen(
-      onResult: (result) {
-        partialTranscript = result.recognizedWords;
-        notifyListeners();
-      },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 4),
-      listenOptions: SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: ListenMode.dictation,
-      ),
-    );
+    try {
+      await _stt.listen(
+        onResult: (result) {
+          partialTranscript = result.recognizedWords;
+          notifyListeners();
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 4),
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: ListenMode.dictation,
+        ),
+      );
+    } catch (e) {
+      // Surface the failure AND reset isRecording so the UI doesn't lock in
+      // "Listening…" forever. Without this, a flaky plugin init left the
+      // sheet stuck because callers (voice_capture_sheet) only watch
+      // `isRecording` to drive their state machine.
+      isRecording = false;
+      lastError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
   }
 
   /// End the recording session. Idempotent.
@@ -91,10 +102,24 @@ class SpeechRecorder extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Stop and return the final transcript.
+  /// Stop and return the final transcript. We wait for `_stt.stop()` to drain
+  /// THEN read partialTranscript so we get the recognizer's polished final
+  /// (mirrors iOS SpeechRecorder.finish() which polls ~700ms for isFinal).
   Future<String> finish() async {
-    final t = partialTranscript;
     await stop();
-    return t;
+    return partialTranscript;
+  }
+
+  @override
+  void dispose() {
+    // Best-effort cancel any in-flight session so a sheet teardown mid-listen
+    // doesn't leave the Android SpeechRecognizer holding the mic.
+    if (isRecording) {
+      isRecording = false;
+      // Fire-and-forget — we're tearing down regardless of result.
+      // ignore: unawaited_futures
+      _stt.cancel().then((_) {}, onError: (_) {});
+    }
+    super.dispose();
   }
 }

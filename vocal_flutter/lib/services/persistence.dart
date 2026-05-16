@@ -25,8 +25,9 @@ class Persistence {
     try {
       final f = await _file();
       if (f == null) return;
-      // Write to a temp file then rename — atomic-ish, so a crash mid-save
-      // doesn't leave a half-written file.
+      // Write to a temp file then rename — atomic via the POSIX rename, so a
+      // crash between write and rename leaves the previous good file intact.
+      // Mirrors iOS Persistence.save's `.atomic` option.
       final tmp = File('${f.path}.tmp');
       await tmp.writeAsString(snapshot.encode(), flush: true);
       await tmp.rename(f.path);
@@ -40,9 +41,26 @@ class Persistence {
   static Future<AppStateSnapshot?> load() async {
     try {
       final f = await _file();
-      if (f == null || !await f.exists()) return null;
-      final raw = await f.readAsString();
-      return AppStateSnapshot.decode(raw);
+      if (f == null) return null;
+      if (await f.exists()) {
+        final raw = await f.readAsString();
+        return AppStateSnapshot.decode(raw);
+      }
+      // Crash-recovery: a previous save may have been killed between
+      // writeAsString and rename, leaving a .tmp orphan. If the main file is
+      // missing but a complete tmp exists, prefer that over treating the user
+      // as a fresh install (which would zero their day).
+      final tmp = File('${f.path}.tmp');
+      if (await tmp.exists()) {
+        final raw = await tmp.readAsString();
+        final decoded = AppStateSnapshot.decode(raw);
+        if (decoded != null) {
+          // Promote tmp → main so the next save uses the normal path.
+          try { await tmp.rename(f.path); } catch (_) {}
+          return decoded;
+        }
+      }
+      return null;
     } catch (_) {
       return null;
     }

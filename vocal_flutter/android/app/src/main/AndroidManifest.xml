@@ -1,7 +1,21 @@
 ﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Mic + speech recognizer (Tier 1 voice capture). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Camera capture for the meal photo / body-fat photo flows. -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Android 13+ scoped image read (gallery picker on modern devices). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Pre-Android-13 fallback for the gallery picker; capped at API 32 so
+         it doesn't request the legacy "all files" scope on modern devices. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+    <!-- Camera is optional — the user can stick to voice-only logging. -->
+    <uses-feature android:name="android.hardware.camera"
+        android:required="false"/>
+    <uses-feature android:name="android.hardware.microphone"
+        android:required="false"/>
+
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService"/>
@@ -9,7 +23,7 @@
     </queries>
 
     <application
-        android:label="vocal"
+        android:label="VoCal"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

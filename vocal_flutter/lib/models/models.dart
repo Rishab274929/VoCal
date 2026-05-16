@@ -3,6 +3,21 @@
 // snapshot is diff-friendly and matches the Swift schema conceptually.
 
 import 'dart:convert';
+import 'dart:math';
+
+/// Process-local counter to keep ids unique even when two are generated in
+/// the same microsecond (Android's microsecondsSinceEpoch granularity is
+/// coarser than iOS UUID(); without the counter, a "Re-record + Save"
+/// double-tap or a bulk-add can produce two MealEntries with the same id).
+int _idCounter = 0;
+final Random _idRng = Random();
+
+String _newId([String? salt]) {
+  final n = _idCounter++;
+  final r = _idRng.nextInt(0x7fffffff);
+  final stem = '${DateTime.now().microsecondsSinceEpoch}-$n-$r';
+  return salt == null ? stem : '$stem-${salt.hashCode.toUnsigned(32)}';
+}
 
 // MARK: - Meals
 
@@ -56,8 +71,7 @@ class MealEntry {
     required this.loggedAt,
     required this.slot,
     required this.source,
-  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString() +
-            '-${name.hashCode}';
+  }) : id = id ?? _newId(name);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -217,7 +231,7 @@ class BodyMetric {
     this.bodyFatPct,
     this.confidence,
     required this.measuredAt,
-  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+  }) : id = id ?? _newId();
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -251,7 +265,7 @@ class CoachMessage {
     required this.role,
     required this.content,
     DateTime? createdAt,
-  })  : id = id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+  })  : id = id ?? _newId(),
         createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
