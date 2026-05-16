@@ -12,12 +12,22 @@ import SwiftUI
 struct PaywallSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var store = StoreKitStore()
+    // Use the app-wide singleton so the transaction listener that's been
+    // running since launch is the same instance the paywall is bound to —
+    // otherwise renewals/refunds that arrived before the user opened the
+    // sheet would be invisible to it.
+    //
+    // `@ObservedObject` (not `@StateObject`) because the singleton's
+    // lifetime is NOT owned by this view — it's owned by the app. Using
+    // `@StateObject` here would still work but produce a spurious second
+    // retain and obscure the ownership semantics.
+    @ObservedObject private var store = StoreKitStore.shared
 
     var onSubscribe: (() -> Void)? = nil
     var onSkip: (() -> Void)? = nil
 
     @State private var plan: StoreKitStore.Plan = .annual
+    @State private var restoring = false
 
     var body: some View {
         ZStack {
@@ -34,7 +44,14 @@ struct PaywallSheet: View {
                         .padding(.vertical, 4)
                         .background(Capsule().fill(Theme.Palette.voltage))
                     Spacer()
-                    if onSkip == nil {
+                    // Show the X only when this is an exploratory upgrade flow
+                    // launched from Profile (a `pro` user wanting to inspect)
+                    // or after the user already has pro (so they can close it).
+                    // For the post-onboarding hard paywall (no callbacks set,
+                    // user is still .free) the X is hidden — they must
+                    // subscribe, restore, or use the explicit "Maybe later"
+                    // route exposed by callers that pass `onSkip`.
+                    if onSkip == nil && (appModel.profile.entitlement == .pro || store.hasPro) {
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 13, weight: .semibold))
@@ -65,6 +82,19 @@ struct PaywallSheet: View {
                     .padding(.bottom, 24)
             }
         }
+        // SECURITY: lock the sheet against swipe-down dismissal during the
+        // post-onboarding hard-paywall flow. Without this, the iOS
+        // interactive-dismiss gesture lets the user swipe past the paywall
+        // even though we hid the X button. We allow dismiss only when:
+        //  - there's an explicit `onSkip` callback (caller is OnboardingFlow,
+        //    which has its own "Maybe later" → finish() path), OR
+        //  - the user has already purchased (so the sheet is in an
+        //    "informational" mode).
+        .interactiveDismissDisabled(
+            onSkip == nil
+            && appModel.profile.entitlement != .pro
+            && !store.hasPro
+        )
     }
 
     // MARK: headline
@@ -219,11 +249,23 @@ struct PaywallSheet: View {
             }
 
             HStack(spacing: 14) {
-                Button("Restore") {
-                    Task { await store.restore() }
+                Button {
+                    Task {
+                        restoring = true
+                        await store.restore()
+                        restoring = false
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if restoring {
+                            ProgressView().controlSize(.mini).tint(Theme.Palette.smoke)
+                        }
+                        Text(restoring ? "Restoring…" : "Restore")
+                    }
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.Palette.smoke)
+                .disabled(restoring || store.isPurchasing)
                 if let skip = onSkip {
                     Text("·").font(.system(size: 10)).foregroundStyle(Theme.Palette.smoke)
                     Button("Maybe later", action: skip)
@@ -234,14 +276,29 @@ struct PaywallSheet: View {
         }
         .task {
             await store.loadProducts()
+            // Catch any pending purchases from a prior session whose verification
+            // arrived between launch and the user opening the paywall.
+            await store.refreshEntitlement()
         }
         .onChange(of: store.hasPro) { _, hasPro in
-            // Auto-dismiss the paywall the moment the entitlement flips
-            // (either after a fresh purchase or a Restore).
+            // Mirror the StoreKit truth into the AppModel either direction.
+            // Going pro: persist + auto-dismiss. Losing pro (refund, expired,
+            // family-share revoked) while paywall is open: revoke locally so
+            // the gated UI re-engages on next paint.
             if hasPro {
-                appModel.upgradeToPro()
+                if appModel.profile.entitlement != .pro {
+                    appModel.upgradeToPro()
+                }
                 onSubscribe?()
                 if onSubscribe == nil { dismiss() }
+            } else if appModel.profile.entitlement == .pro {
+                // Refund / family-share revoke / expired and not renewed.
+                // Direct mutation on the @Published profile; persist() runs
+                // via AppModel's existing didSet-equivalent (next mutation
+                // through any AppModel method will save). To be safe, force
+                // a persist by re-applying via the existing API surface:
+                appModel.profile.entitlement = .free
+                appModel.persist()
             }
         }
     }

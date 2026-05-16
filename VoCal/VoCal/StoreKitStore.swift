@@ -16,6 +16,17 @@
 //  this store can hand off entitlement queries to RC. Until then, we
 //  source of truth straight from Apple via Transaction.currentEntitlements.
 //
+//  Lifecycle: `StoreKitStore.shared` is a process-wide singleton. The
+//  transaction listener spins up on first access (from `VoCalApp` at
+//  launch) and lives for the lifetime of the app process — not just
+//  while the paywall sheet is open. Without this, refunds, renewals,
+//  ask-to-buy approvals, and cross-device restores that arrive while
+//  the paywall is closed would be silently dropped and the user would
+//  either keep premium they no longer paid for OR lose premium they
+//  did pay for, depending on direction. App-wide ownership also lets
+//  the `Transaction.unfinished` drain on cold launch catch any prior
+//  pending purchase that completed between sessions.
+//
 
 import Foundation
 import StoreKit
@@ -23,6 +34,12 @@ import Combine
 
 @MainActor
 final class StoreKitStore: ObservableObject {
+    /// App-wide singleton. Initialized once on first access — currently
+    /// triggered by `AuthSession.init()` so the transaction listener is up
+    /// before any UI is shown. PaywallSheet binds to the same instance via
+    /// `@ObservedObject private var store = StoreKitStore.shared`.
+    static let shared = StoreKitStore()
+
     // Product identifiers configured in App Store Connect.
     // These must match the In-App Purchase product IDs exactly.
     static let monthlyID = "com.EricSpencer.VoCal.pro.monthly"
@@ -44,9 +61,18 @@ final class StoreKitStore: ObservableObject {
     @Published private(set) var hasPro = false
     @Published var lastError: String?
 
+    /// Mirror of `hasPro` written to UserDefaults so a cold launch can paint
+    /// the gated UI before StoreKit's async `currentEntitlements` resolves.
+    /// Source of truth is still Apple — this is just a cache.
+    static let entitlementCacheKey = "vocal.entitlement.pro.v1"
+
     private var transactionListener: Task<Void, Never>?
 
-    init() {
+    private init() {
+        // Seed `hasPro` from the cached value so the UI doesn't flicker
+        // free→pro on launch for an already-subscribed user.
+        self.hasPro = UserDefaults.standard.bool(forKey: Self.entitlementCacheKey)
+
         // Spin up the renewal/restore listener immediately. Without this,
         // a TestFlight tester who restores a purchase from a different
         // device won't see it reflected on this device until next launch.
@@ -55,13 +81,43 @@ final class StoreKitStore: ObservableObject {
                 await self?.handle(verificationResult: result)
             }
         }
+
+        // Self-bootstrap: drain any unfinished transactions from the prior
+        // session and re-sync the entitlement cache against Apple's truth.
+        // Fire-and-forget; the UI uses the cached `hasPro` until this
+        // resolves. Without this, a purchase that completed while the app
+        // was killed (e.g. ask-to-buy approved overnight) wouldn't be
+        // recognized until the user manually tapped Restore.
+        Task { [weak self] in
+            await self?.bootstrap()
+        }
     }
 
-    deinit { transactionListener?.cancel() }
+    // deinit intentionally omitted: this is a singleton, never deallocates.
+    // The Transaction.updates listener lives for the lifetime of the process
+    // by design — cancelling it would defeat the whole point of having a
+    // listener that survives sheet open/close cycles.
+
+    // MARK: - Cold-launch drain
+
+    /// Call once from `VoCalApp` at launch. Drains any unfinished
+    /// transactions from the previous session and refreshes the entitlement
+    /// cache against Apple's current state. Safe to call multiple times.
+    func bootstrap() async {
+        // Apple's recommendation: drain Transaction.unfinished on launch so
+        // any purchase that completed while the app was killed gets finished
+        // and credited.
+        for await result in Transaction.unfinished {
+            await handle(verificationResult: result)
+        }
+        await refreshEntitlement()
+    }
 
     // MARK: - Loading
 
     func loadProducts() async {
+        // Don't re-fetch if we already have both products loaded.
+        if state == .loaded, products.count == Self.productIDs.count { return }
         state = .loading
         do {
             let fetched = try await Product.products(for: Self.productIDs)
@@ -117,28 +173,48 @@ final class StoreKitStore: ObservableObject {
     }
 
     /// Re-check entitlements from Apple. Called on App resume + after a
-    /// "Restore Purchases" tap.
+    /// "Restore Purchases" tap. Surfaces a friendly message if there was
+    /// nothing to restore so the spinner doesn't appear stuck.
     func restore() async {
+        // Optimistically clear any prior error so the user sees fresh state.
+        let priorEntitlement = hasPro
+        lastError = nil
         do {
             try await AppStore.sync()
         } catch {
             lastError = "Restore failed: \(error.localizedDescription)"
+            return
         }
         await refreshEntitlement()
+        if !priorEntitlement && !hasPro {
+            // Sync succeeded but no eligible purchase exists for this Apple ID.
+            lastError = "No prior purchase found for this Apple ID."
+        }
     }
 
     // MARK: - Entitlement
 
     /// True if the user currently owns an active Pro subscription.
+    /// Drives the @Published `hasPro` flag plus the UserDefaults cache.
     func refreshEntitlement() async {
+        var found = false
         for await result in Transaction.currentEntitlements {
+            // Only trust VERIFIED entitlements. An unverified result here
+            // means the JWS signature didn't check out — could be jailbreak
+            // tampering. Treat as not-entitled.
             if case .verified(let txn) = result, Self.productIDs.contains(txn.productID) {
-                // currentEntitlements only yields ACTIVE (unrevoked, unexpired) entitlements.
-                hasPro = true
-                return
+                // currentEntitlements only yields ACTIVE (unrevoked, unexpired) entitlements,
+                // so reaching this point means the user is paid up RIGHT NOW.
+                // Defense in depth: also check `revocationDate` and `isUpgraded` in case
+                // a future SDK version yields revoked ones.
+                if txn.revocationDate == nil && !txn.isUpgraded {
+                    found = true
+                    break
+                }
             }
         }
-        hasPro = false
+        hasPro = found
+        UserDefaults.standard.set(found, forKey: Self.entitlementCacheKey)
     }
 
     @discardableResult
@@ -150,6 +226,9 @@ final class StoreKitStore: ObservableObject {
             await refreshEntitlement()
             return Self.productIDs.contains(txn.productID)
         case .unverified(_, let error):
+            // SECURITY: never grant entitlement on an unverified transaction.
+            // The JWS signature check is our only defense against a tampered
+            // client claiming pro. Surface the error for diagnostics.
             lastError = "Unverified purchase: \(error.localizedDescription)"
             return false
         }

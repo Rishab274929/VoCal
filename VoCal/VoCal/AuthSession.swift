@@ -56,13 +56,39 @@ final class AuthSession: ObservableObject {
             // its expiry — we'll refresh lazily on the next backend call.
             self.isAuthenticated = true
         }
+        // Touch StoreKitStore.shared so its transaction listener spins up
+        // at the same time as auth, instead of waiting for the user to
+        // open the paywall. Without this, renewals/refunds delivered
+        // before the paywall is opened would be missed.
+        _ = StoreKitStore.shared
     }
 
     /// Trade a Google ID token for our backend JWT. Once this succeeds the
     /// session is "upgraded" from anonymous to a signed-in Google user;
     /// subsequent backend calls authenticate as that user.
+    ///
+    /// If we were previously signed in as an anonymous user, we pass that
+    /// `user_id` + token to the backend so it can merge the anonymous
+    /// account's meals/profile into the new Google identity. Server is the
+    /// authority on the merge — iOS just hands over enough to prove the
+    /// merge is legitimate.
     func signInWithGoogle() async throws {
-        let resp = try await GoogleSignIn.shared.signIn()
+        // Capture the prior anon credentials BEFORE any awaits so we can
+        // hand them to the backend regardless of intervening state changes.
+        let priorAnonUserID: String?
+        let priorAnonToken: String?
+        if current?.provider == .anonymous {
+            priorAnonUserID = current?.userID
+            priorAnonToken = current?.token
+        } else {
+            priorAnonUserID = nil
+            priorAnonToken = nil
+        }
+
+        let resp = try await GoogleSignIn.shared.signIn(
+            linkAnonymousUserID: priorAnonUserID,
+            linkAnonymousToken: priorAnonToken
+        )
         let snap = Snapshot(
             userID: resp.user_id,
             token: resp.token,
@@ -81,17 +107,42 @@ final class AuthSession: ObservableObject {
         pictureURL = snap.pictureURL
         isAuthenticated = true
         Keychain.save(snap, key: Self.keychainKey)
+        // NOTE on local state: the on-disk meal log (vocal_state.v1.json in
+        // Persistence) is intentionally NOT cleared. The user expects their
+        // logged-while-anon meals to survive the upgrade. The backend merge
+        // is for cross-device continuity; local-only is enough for the
+        // common single-device case. If the backend merge fails, the local
+        // log is still intact — worst case the user has to re-log on a
+        // second device.
     }
 
     // MARK: - Public surface
 
     /// Ensures we have a valid (non-expired) token. Refreshes if needed.
     /// Returns the token string. Throws on network failure.
+    ///
+    /// For a Google-signed-in session whose JWT has expired, we currently
+    /// return the stale token rather than silently downgrading to a fresh
+    /// anonymous identity (which would orphan the user's account from the
+    /// server's perspective). A backend `/api/auth/google/refresh` endpoint
+    /// or a re-prompt-with-Google flow would be the right long-term fix;
+    /// for now the backend's JWT TTL must be long enough that this case
+    /// is rare, and the user re-opening the app + tapping Sign In with
+    /// Google again is the recovery path.
     func currentToken() async throws -> String {
         if let snap = current, snap.expiresAt > Date().addingTimeInterval(60) {
             return snap.token
         }
-        return try await refresh().token
+        // Anonymous: safe to silently rotate via /api/auth/anonymous since
+        // the device_id keeps the same user_id across rotations.
+        if current?.provider == .anonymous || current == nil {
+            return try await refresh().token
+        }
+        // Google: return the stale token rather than overwrite the
+        // Google identity with a fresh anon one. The backend will reject
+        // it with 401, and the caller can prompt the user to sign in
+        // again. (Backend should ideally tolerate clock skew + grace.)
+        return current?.token ?? ""
     }
 
     /// Stamp an outgoing URLRequest with `Authorization: Bearer <token>`.
@@ -104,7 +155,15 @@ final class AuthSession: ObservableObject {
     }
 
     /// Erase the local session. Next request will create a fresh anon user.
-    func signOut() {
+    ///
+    /// - Parameter clearLocalData: when true, also wipes the persisted meal
+    ///   log + profile from the Documents directory. Use this when a user
+    ///   explicitly signs out (vs. the case where we're rotating a stale
+    ///   anon token where the meals belong to the same person). The
+    ///   default `false` matches the old behavior so existing call sites
+    ///   keep working — but the Profile-screen "Sign out" button should
+    ///   pass `true`.
+    func signOut(clearLocalData: Bool = false) {
         Keychain.delete(key: Self.keychainKey)
         current = nil
         userID = nil
@@ -113,6 +172,13 @@ final class AuthSession: ObservableObject {
         displayName = nil
         pictureURL = nil
         isAuthenticated = false
+        if clearLocalData {
+            Persistence.clear()
+            // Also drop the cached daily-macros snapshot so the App Intents
+            // and widget don't keep reading the previous user's totals.
+            UserDefaults.standard.removeObject(forKey: DailyMacrosSnapshot.defaultsKey)
+            UserDefaults.standard.removeObject(forKey: StoreKitStore.entitlementCacheKey)
+        }
     }
 
     // MARK: - Refresh
