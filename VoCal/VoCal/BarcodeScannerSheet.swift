@@ -231,8 +231,14 @@ struct BarcodeScannerSheet: View {
                 )
                 lastReasoning = "Resolved via \(source). Code \(code)."
             } catch BarcodeAPI.Error.notFound {
-                error = "Open Food Facts doesn't know that barcode. Try voice or photo logging."
+                // Reset `scanned` so the camera reticle comes back rather
+                // than the user being stuck on the "Re-scan" footer with
+                // a long-faded error message and no way to retry without
+                // dismissing and re-opening the whole sheet.
+                scanned = nil
+                error = "Couldn't find that barcode. Try voice or photo logging."
             } catch {
+                scanned = nil
                 self.error = "Lookup failed. \(error.localizedDescription)"
             }
         }
@@ -257,11 +263,16 @@ final class BarcodeScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDe
     private let session = AVCaptureSession()
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var hasReported = false
+    /// Background queue used for session start/stop so we don't block the
+    /// main thread (Apple recommends both calls run off-main; `stopRunning`
+    /// can otherwise hang for the duration of the camera shutdown ~200ms).
+    private let sessionQueue = DispatchQueue(label: "vocal.barcode.session", qos: .userInitiated)
+    private var didConfigure = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        configureSession()
+        requestAccessAndConfigure()
     }
 
     override func viewDidLayoutSubviews() {
@@ -272,11 +283,69 @@ final class BarcodeScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDe
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         hasReported = false
-        if !session.isRunning { DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() } }
+        sessionQueue.async { [weak self] in
+            guard let self, self.didConfigure, !self.session.isRunning else { return }
+            self.session.startRunning()
+        }
     }
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if session.isRunning { session.stopRunning() }
+        // Off-main: `stopRunning` synchronously waits for the camera capture
+        // pipeline to flush, which can spin the main thread and leave the
+        // green camera indicator lit in the status bar longer than needed.
+        sessionQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
+            self.session.stopRunning()
+        }
+    }
+
+    deinit {
+        // Belt-and-braces: if the view disappears for any reason we haven't
+        // handled, ensure the AVCaptureSession is torn down so the camera
+        // hardware (and the green "camera in use" indicator) is released.
+        let session = self.session
+        DispatchQueue.global(qos: .utility).async {
+            if session.isRunning { session.stopRunning() }
+        }
+    }
+
+    private func requestAccessAndConfigure() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            configureSession()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if granted {
+                        self.configureSession()
+                        self.sessionQueue.async {
+                            if self.didConfigure && !self.session.isRunning {
+                                self.session.startRunning()
+                            }
+                        }
+                    } else {
+                        self.showFallbackLabel(text: "Camera access denied.\nUse manual entry below.")
+                    }
+                }
+            }
+        case .denied, .restricted:
+            showFallbackLabel(text: "Camera access denied.\nUse manual entry below.")
+        @unknown default:
+            showFallbackLabel(text: "Camera unavailable.\nUse manual entry below.")
+        }
+    }
+
+    private func showFallbackLabel(text: String) {
+        let label = UILabel(frame: view.bounds)
+        label.text = text
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.textColor = UIColor(white: 1.0, alpha: 0.4)
+        label.font = .systemFont(ofSize: 13)
+        label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(label)
     }
 
     private func configureSession() {
@@ -284,32 +353,31 @@ final class BarcodeScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDe
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input) else {
             // Simulator / device with no camera — show placeholder text.
-            let label = UILabel(frame: view.bounds)
-            label.text = "Camera unavailable\nUse manual entry below"
-            label.textAlignment = .center
-            label.numberOfLines = 0
-            label.textColor = UIColor(white: 1.0, alpha: 0.4)
-            label.font = .systemFont(ofSize: 13)
-            label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            view.addSubview(label)
+            showFallbackLabel(text: "Camera unavailable.\nUse manual entry below.")
             return
         }
+        session.beginConfiguration()
         session.addInput(input)
 
         let output = AVCaptureMetadataOutput()
         if session.canAddOutput(output) {
             session.addOutput(output)
             output.setMetadataObjectsDelegate(self, queue: .main)
+            // Keep QR/PDF417 in the type set (some warehouse demos use them),
+            // but we filter non-numeric payloads out in the callback so the
+            // resolver never gets a URL or other non-barcode string.
             output.metadataObjectTypes = [
                 .ean8, .ean13, .upce, .code128, .code39, .code93, .qr, .pdf417, .interleaved2of5
             ].filter { output.availableMetadataObjectTypes.contains($0) }
         }
+        session.commitConfiguration()
 
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
         layer.frame = view.bounds
         view.layer.addSublayer(layer)
         previewLayer = layer
+        didConfigure = true
     }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput,
@@ -317,11 +385,19 @@ final class BarcodeScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDe
                         from connection: AVCaptureConnection) {
         guard !hasReported,
               let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-              let raw = obj.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else { return }
+              let stringValue = obj.stringValue else { return }
+        // Some scanned codes (QR especially) come back with URL prefixes or
+        // human text. The food-barcode resolver only accepts 8-14 digit
+        // payloads, so strip everything else and validate length before we
+        // bother firing a network call.
+        let digits = stringValue.unicodeScalars
+            .filter { CharacterSet.decimalDigits.contains($0) }
+            .map { String($0) }
+            .joined()
+        guard (8...14).contains(digits.count) else { return }
         hasReported = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        onCode?(raw)
+        onCode?(digits)
     }
 }
 
@@ -364,12 +440,22 @@ enum BarcodeAPI {
     private struct ErrorBody: Codable { let error: String? }
 
     static func lookup(code: String) async throws -> (ParsedMealDTO, String) {
+        // Normalize: strip whitespace + non-digits so manually-typed entries
+        // with hyphens or spaces still hit the resolvers (which require
+        // 8-14 digit codes).
+        let normalized = code.unicodeScalars
+            .filter { CharacterSet.decimalDigits.contains($0) }
+            .map { String($0) }
+            .joined()
+        guard (8...14).contains(normalized.count) else {
+            throw Error.notFound
+        }
         // 1. Backend (USDA Branded).
-        if let meal = try? await fetchBackend(code: code) {
+        if let meal = try? await fetchBackend(code: normalized) {
             return meal
         }
         // 2. Open Food Facts direct from iOS — works because we're not on CF.
-        if let meal = try? await fetchOpenFoodFacts(code: code) {
+        if let meal = try? await fetchOpenFoodFacts(code: normalized) {
             return meal
         }
         throw Error.notFound
@@ -472,8 +558,17 @@ enum BarcodeAPI {
         }
         let kcal = pick(n.energy_kcal_serving, n.energy_kcal_100g)
         guard kcal > 0 else { throw Error.notFound }
-        let brand = p.brands?.split(separator: ",").first.map(String.init)?.trimmingCharacters(in: .whitespaces)
-        let name = [brand, p.product_name_en ?? p.product_name].compactMap { $0 }.joined(separator: " · ")
+        let brand = p.brands?
+            .split(separator: ",").first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespaces)
+        let productName = (p.product_name_en ?? p.product_name)?
+            .trimmingCharacters(in: .whitespaces)
+        // Filter out empty/whitespace-only fragments so we never end up with
+        // "Coca-Cola · " or " · Apple Juice" — both ugly and load-bearing
+        // since this becomes the meal name in HealthKit and the day log.
+        let nameParts = [brand, productName].compactMap { $0?.isEmpty == false ? $0 : nil }
+        let name = nameParts.joined(separator: " · ")
         let detail = (p.serving_size ?? p.quantity ?? "barcode \(code)")
         let meal = ParsedMealDTO(
             name: name.isEmpty ? "Barcode \(code)" : String(name.prefix(80)),
