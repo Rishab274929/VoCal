@@ -376,12 +376,27 @@ struct VoiceCaptureSheet: View {
             }
             applyParsedMeal(meal, transcript: response.transcript)
         } catch {
-            // Local fallback so the demo still works offline
-            if let local = localFallback(for: payloadTranscript, followUp: followUp) {
-                applyParsedMeal(local.meal, transcript: payloadTranscript, reasoning: local.reasoning)
-            } else {
-                parseError = "Couldn't parse. Try re-recording."
-                withAnimation { phase = .listening }
+            // Network failed — go through the shared offline fallback module.
+            switch OfflineFallback.resolve(transcript: payloadTranscript, followUpAnswer: followUp) {
+            case .meal(let response):
+                if let meal = response.meal {
+                    applyParsedMeal(meal, transcript: payloadTranscript, reasoning: response.reasoning)
+                } else {
+                    parseError = "Couldn't parse. Try re-recording."
+                    withAnimation { phase = .listening }
+                }
+            case .followUp(let question, let reasoning):
+                followUpQuestion = question
+                parseReasoning = reasoning
+                withAnimation(.spring) { phase = .followUp }
+            case .miss:
+                let generic = OfflineFallback.genericEstimate(transcript: payloadTranscript)
+                if let meal = generic.meal {
+                    applyParsedMeal(meal, transcript: payloadTranscript, reasoning: generic.reasoning)
+                } else {
+                    parseError = "Couldn't parse. Try re-recording."
+                    withAnimation { phase = .listening }
+                }
             }
         }
     }
@@ -403,70 +418,6 @@ struct VoiceCaptureSheet: View {
         transcriptDraft = transcript
         if let reasoning { parseReasoning = reasoning }
         withAnimation(.spring) { phase = .review }
-    }
-
-    private struct LocalFallbackResult {
-        let meal: VoiceParseResponse.ParsedMeal
-        let reasoning: String
-    }
-
-    private func localFallback(for transcript: String, followUp: String?) -> LocalFallbackResult? {
-        let text = transcript.lowercased()
-        let answer = (followUp ?? "").lowercased()
-
-        if text.contains("mcdonald") && text.contains("fry") {
-            return LocalFallbackResult(
-                meal: .init(name: "McDonald's French Fries (Medium)", detail: "Chain menu match · offline cache",
-                            kcal: 320, protein_g: 4, carbs_g: 43, fat_g: 15, slot: "snack", source: "voice", confidence: 0.97),
-                reasoning: "Offline match against cached McDonald's menu."
-            )
-        }
-        if text.contains("starbucks") && text.contains("latte") {
-            return LocalFallbackResult(
-                meal: .init(name: "Starbucks Iced Oatmilk Latte (Grande)", detail: "Oatmilk · offline cache",
-                            kcal: 190, protein_g: 3, carbs_g: 24, fat_g: 8, slot: "breakfast", source: "voice", confidence: 0.95),
-                reasoning: "Offline match against cached Starbucks menu."
-            )
-        }
-        if text.contains("chipotle") && text.contains("bowl") {
-            let guacAnswered = answer.contains("single") || answer.contains("double") || answer.contains("two")
-            if text.contains("guac") && !guacAnswered {
-                followUpQuestion = "Single scoop of guac?"
-                parseReasoning = "Need guac portion to finalize macros."
-                withAnimation(.spring) { phase = .followUp }
-                return nil
-            }
-            // Per Chipotle's published nutrition: brown rice 210, black beans 130,
-            // chicken 180, guac 230 (1 scoop) / 460 (2 scoops), fajita veg ~20.
-            let doubleChicken = text.contains("double") && text.contains("chicken")
-            let chickenCals = doubleChicken ? 360 : 180
-            let chickenProtein = doubleChicken ? 64 : 32
-            let chickenFat = doubleChicken ? 14 : 7
-            let guacDouble = answer.contains("double") || answer.contains("two")
-            let guacCals = guacDouble ? 460 : 230
-            let guacFat = guacDouble ? 44 : 22
-            let kcal = 210 /* brown rice */ + 130 /* black beans */ + chickenCals + guacCals
-            let detail = (doubleChicken ? "double" : "single") + " chicken, brown rice, black beans, "
-                + (guacDouble ? "2× guac" : "1× guac") + " · offline"
-            return LocalFallbackResult(
-                meal: .init(
-                    name: "Chipotle Chicken Bowl",
-                    detail: detail,
-                    kcal: kcal,
-                    protein_g: chickenProtein + 5 /* beans */ + 4 /* rice */,
-                    carbs_g: 45 /* rice */ + 22 /* beans */ + (guacDouble ? 16 : 8) /* guac */,
-                    fat_g: chickenFat + 2 /* rice/beans */ + guacFat,
-                    slot: "lunch", source: "voice", confidence: 0.92
-                ),
-                reasoning: "Offline match against cached Chipotle template."
-            )
-        }
-        return LocalFallbackResult(
-            meal: .init(name: "Meal from voice", detail: "Estimated fallback",
-                        kcal: 450, protein_g: 20, carbs_g: 45, fat_g: 20,
-                        slot: "snack", source: "voice", confidence: 0.5),
-            reasoning: "Offline fallback estimate."
-        )
     }
 
     private func startPromptRotator() {

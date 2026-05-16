@@ -65,6 +65,48 @@ struct VoCalTests {
         #expect(n2 == "plain rice")
     }
 
+    // MARK: OfflineFallback — single source of truth for offline matches
+
+    @Test func offlineFallbackResolvesMcdonaldsFry() async throws {
+        guard case .meal(let resp) = OfflineFallback.resolve(transcript: "medium fry from McDonald's") else {
+            Issue.record("Expected .meal for McDonald's fry"); return
+        }
+        try #require(resp.meal != nil)
+        #expect(resp.meal?.name == "McDonald's French Fries (Medium)")
+        #expect(resp.meal?.kcal == 320)
+    }
+
+    @Test func offlineFallbackTriggersChipotleGuacFollowUp() async throws {
+        let r = OfflineFallback.resolve(transcript: "Chipotle bowl with chicken brown rice black beans and guac")
+        guard case .followUp(let question, _) = r else {
+            Issue.record("Expected follow-up for unspecified guac portion"); return
+        }
+        #expect(question.lowercased().contains("guac"))
+    }
+
+    @Test func offlineFallbackChipotleDoubleChickenScalesCals() async throws {
+        let single = OfflineFallback.resolve(
+            transcript: "Chipotle bowl chicken brown rice black beans",
+            followUpAnswer: nil
+        )
+        let double = OfflineFallback.resolve(
+            transcript: "Chipotle bowl double chicken brown rice black beans",
+            followUpAnswer: nil
+        )
+        guard case .meal(let s) = single, case .meal(let d) = double else {
+            Issue.record("Expected both to resolve to a meal"); return
+        }
+        // Double chicken should add 180 kcal vs single (per Chipotle's nutrition).
+        #expect((d.meal?.kcal ?? 0) - (s.meal?.kcal ?? 0) == 180)
+    }
+
+    @Test func offlineFallbackMissesUnknownPhrase() async throws {
+        let r = OfflineFallback.resolve(transcript: "random gibberish not a meal")
+        if case .miss = r { /* expected */ } else {
+            Issue.record("Expected .miss for unknown phrase")
+        }
+    }
+
     // MARK: Persistence — full app state round-trip
 
     @Test func persistenceRoundTripsAppState() async throws {

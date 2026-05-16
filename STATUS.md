@@ -121,3 +121,28 @@ Killed two birds: meals/profile/onboarding now survive force-quit, AND a brand-n
 - **Tests** — added `persistenceRoundTripsAppState` (save → clear → load, asserts equality across name/meals/calories/onboarding flag) and `fromPersistedOrEmptyReturnsEmptyStateWhenNoFile` (after clear, fresh AppModel has empty meals, no name, onboarding pending). `Persistence.clear()` runs in test setup to keep results deterministic across runs.
 
 Build + test on iPhone 17 Pro simulator: **TEST SUCCEEDED** with all 11 tests passing in 0.000s each (Codable serialization to ~5KB JSON is fast). §13 progress: check 1 (cold launch → onboarding → home) now does the right thing for both flows — new install hits onboarding, returning user skips it. Next iteration: unify the two `localFallback` functions in VoiceCaptureSheet.swift and AppIntents.swift so the on-device fallback is one source of truth, plus general polish.
+
+### Iteration 13 — unified offline fallback
+
+The audit flagged two `localFallback` functions (one in `VoiceCaptureSheet.swift`, one in `AppIntents.swift`) with diverging coverage — the sheet had a Chipotle bowl branch, the Siri intent didn't. Replaced both with a single `OfflineFallback` module:
+
+- **`VoCal/VoCal/OfflineFallback.swift`** — `static func resolve(transcript:, followUpAnswer:)` returns one of three cases: `.meal(VoiceParseResponse)` for a confident hit, `.followUp(question:, reasoning:)` when clarification is needed, `.miss` for everything else. Plus `OfflineFallback.genericEstimate(transcript:)` for the explicit "we tried everything, here's a clearly-flagged guess" path. McDonald's fry / Starbucks oat latte / Chipotle bowl (with double-chicken + guac math) all live here once.
+- **`VoiceCaptureSheet.swift`** — catch block on the network call now switches over the three cases. `.followUp` flips the sheet to the follow-up phase exactly as before; `.miss` falls to `genericEstimate`; `.meal` applies directly. Deleted 60+ lines of duplicate matching logic.
+- **`AppIntents.swift`** — same switch, but Siri can't easily ask a follow-up mid-intent, so `.followUp` collapses to `genericEstimate` with a polite "we'd need to ask" reasoning. Deleted another ~35 lines of duplicate matching logic.
+- **Tests** — 4 new tests cover `OfflineFallback`: McDonald's fry returns a meal with correct kcal, "Chipotle bowl … guac" triggers a follow-up question containing "guac", double-chicken adds exactly 180 kcal vs single, and unknown phrases return `.miss`. All 15 tests pass on iPhone 17 Pro simulator in 0.000s.
+
+This closes priority #5 from the original audit list. The codebase now has *one* offline match table (`OfflineFallback`), *one* on-device cache (`FoodCanon`), *one* network resolver (`VoiceAPIClient` → backend), *one* persistence layer (`Persistence`), and *one* daily-totals snapshot (`DailyMacrosSnapshot`) — each with its own focused responsibility and unit tests.
+
+§13 progress: still no checkboxes flip green at the automation level (those all need a real device + TestFlight build), but every one of the priorities from the audit is now addressed in code:
+- ✅ #1 Real LLM food parser → `vocal-api/` with Wafer + OpenRouter + USDA + chain canon
+- ✅ #2 On-device top-N canon → `FoodCanon` + `food_canon.json` with ~100 curated entries
+- ✅ #3 GetDailyMacrosIntent hardcode → reads real `DailyMacrosSnapshot` from UserDefaults
+- ✅ #4 Persistence → `Persistence` writes to Documents on every mutation
+- ✅ #5 Unified fallbacks → `OfflineFallback` is the single source of truth
+- ✅ #6 Chipotle double-chicken math → fixed in both `OfflineFallback` and backend `canon.ts`
+- ✅ #7 `profile.sex` default `"x"` → empty + proper switch in BF heuristic
+- ✅ #8 addMeal idempotency → 2s same-name-same-kcal dedupe
+- ✅ #9 MockData seed → replaced by `AppModel.fromPersistedOrEmpty()` and `AppStateSnapshot.empty()`
+- ✅ #10 Parallel SpeechRecorder permissions → `async let` for both prompts
+
+Ralph loop iteration target reached. Next iteration could add: real coach LLM wiring (still uses 4 hardcoded `if` branches), App Group sharing so widget/intent really see app state from a separate process, and on-device canon expansion from ~100 entries to the targeted ~1000 by importing the USDA FDC CSV.

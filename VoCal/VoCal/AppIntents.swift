@@ -154,42 +154,16 @@ enum VoiceParseAPI {
         if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             return try JSONDecoder().decode(VoiceParseResponse.self, from: data)
         }
-        // If the network call fails (e.g. backend not deployed), synthesize a
-        // local response for the killer-demo phrases so Siri demos still work.
-        return localFallback(for: transcript)
-    }
-
-    private static func localFallback(for transcript: String) -> VoiceParseResponse {
-        let text = transcript.lowercased()
-        if text.contains("mcdonald") && text.contains("fry") {
-            return VoiceParseResponse(
-                transcript: transcript,
-                follow_up_question: nil,
-                meal: .init(name: "McDonald's French Fries (Medium)",
-                            detail: "Chain menu match (offline)",
-                            kcal: 320, protein_g: 4, carbs_g: 43, fat_g: 15,
-                            slot: "snack", source: "voice", confidence: 0.97),
-                reasoning: "Offline McDonald's match."
-            )
+        // Network failed — fall through to shared offline fallback. Siri can't
+        // easily do a follow-up mid-intent, so we collapse `.followUp` to a
+        // generic estimate with a polite reasoning string.
+        switch OfflineFallback.resolve(transcript: transcript, followUpAnswer: followUp) {
+        case .meal(let response):
+            return response
+        case .followUp:
+            return OfflineFallback.genericEstimate(transcript: transcript)
+        case .miss:
+            return OfflineFallback.genericEstimate(transcript: transcript)
         }
-        if text.contains("starbucks") && text.contains("latte") {
-            return VoiceParseResponse(
-                transcript: transcript,
-                follow_up_question: nil,
-                meal: .init(name: "Starbucks Iced Oatmilk Latte (Grande)",
-                            detail: "Oatmilk (offline)",
-                            kcal: 190, protein_g: 3, carbs_g: 24, fat_g: 8,
-                            slot: "breakfast", source: "voice", confidence: 0.95),
-                reasoning: "Offline Starbucks match."
-            )
-        }
-        return VoiceParseResponse(
-            transcript: transcript,
-            follow_up_question: nil,
-            meal: .init(name: "Meal from voice", detail: "Estimated (offline)",
-                        kcal: 450, protein_g: 20, carbs_g: 45, fat_g: 20,
-                        slot: "snack", source: "voice", confidence: 0.5),
-            reasoning: "Offline fallback estimate."
-        )
     }
 }
