@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selection: EditorialTabBar.Tab = .today
     @State private var showingVoice = false
     @State private var showingPhoto = false
+    @State private var showingBarcode = false
     @State private var showingPaywall = false
 
     var body: some View {
@@ -22,7 +23,7 @@ struct ContentView: View {
 
             Group {
                 switch selection {
-                case .today:    TodayView(showingVoice: $showingVoice, showingPhoto: $showingPhoto)
+                case .today:    TodayView(showingVoice: $showingVoice, showingPhoto: $showingPhoto, showingBarcode: $showingBarcode)
                 case .progress: ProgressScreen()
                 case .coach:    CoachView()
                 case .profile:  ProfileView(showingPaywall: $showingPaywall)
@@ -44,6 +45,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingPhoto) {
             MealPhotoSheet()
+                .presentationDetents([.large])
+                .presentationBackground(Theme.Palette.ink)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingBarcode) {
+            BarcodeScannerSheet()
                 .presentationDetents([.large])
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)

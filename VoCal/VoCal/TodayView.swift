@@ -13,6 +13,7 @@ struct TodayView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var showingVoice: Bool
     @Binding var showingPhoto: Bool
+    @Binding var showingBarcode: Bool
 
     var body: some View {
         ScrollView {
@@ -37,6 +38,14 @@ struct TodayView: View {
         HStack(spacing: 10) {
             VoCalWordmark()
             Spacer()
+            Button { showingBarcode = true } label: {
+                Image(systemName: "barcode.viewfinder")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.bone)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().strokeBorder(Theme.Palette.hairlineStrong, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
             Button { showingPhoto = true } label: {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 13, weight: .semibold))
@@ -213,7 +222,8 @@ struct TodayView: View {
 #Preview {
     @Previewable @State var showing = false
     @Previewable @State var photo = false
-    return TodayView(showingVoice: $showing, showingPhoto: $photo)
+    @Previewable @State var barcode = false
+    return TodayView(showingVoice: $showing, showingPhoto: $photo, showingBarcode: $barcode)
         .environmentObject(AppModel(
             totals: MockData.today,
             meals: MockData.recentMeals,
