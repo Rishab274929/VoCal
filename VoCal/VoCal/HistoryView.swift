@@ -50,14 +50,33 @@ struct ProgressScreen: View {
     // MARK: weekly kcal bar chart
 
     private var weeklyKcalChart: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        // Real aggregation over `appModel.meals`. Build a (date, kcal)
+        // tuple for each of the last 7 calendar days (oldest left, today
+        // right) and normalize against the week's peak so the tallest bar
+        // hits the chart ceiling without exploding on a single 4000-kcal
+        // day. Empty week renders a hairline + eyebrow placeholder.
+        let week = weeklyCalorieTotals()
+        let maxKcal = max(1, week.map { $0.calories }.max() ?? 0)
+        let hasAnyData = week.contains { $0.calories > 0 }
+        let avg = hasAnyData
+            ? Int((Double(week.map { $0.calories }.reduce(0, +)) / 7.0).rounded())
+            : 0
+
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("CALORIES · 7 DAYS")
                         .eyebrow()
-                    Text("avg 1,940 kcal")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.Palette.bone)
+                    if hasAnyData {
+                        Text("avg \(avg.formatted()) kcal")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.Palette.bone)
+                    } else {
+                        Text("LOG A FEW DAYS TO SEE YOUR TREND")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(1.4)
+                            .foregroundStyle(Theme.Palette.smoke)
+                    }
                 }
                 Spacer()
                 HStack(spacing: 4) {
@@ -68,25 +87,38 @@ struct ProgressScreen: View {
                 }
             }
 
-            HStack(alignment: .bottom, spacing: 12) {
-                ForEach(0..<7, id: \.self) { i in
-                    VStack(spacing: 6) {
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Theme.Palette.hairlineStrong)
-                                .frame(width: 16, height: 120)
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(i == 6 ? Theme.Palette.voltage : Theme.Palette.bone.opacity(0.5))
-                                .frame(width: 16, height: barHeights[i])
-                                .shadow(color: i == 6 ? Theme.Palette.voltage.opacity(0.5) : .clear, radius: 8)
+            if hasAnyData {
+                HStack(alignment: .bottom, spacing: 12) {
+                    ForEach(Array(week.enumerated()), id: \.offset) { i, day in
+                        let isToday = i == week.count - 1
+                        let normalized = CGFloat(day.calories) / CGFloat(maxKcal)
+                        let barHeight = max(2, normalized * 120)
+                        VStack(spacing: 6) {
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Theme.Palette.hairlineStrong)
+                                    .frame(width: 16, height: 120)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(isToday ? Theme.Palette.voltage : Theme.Palette.bone.opacity(0.5))
+                                    .frame(width: 16, height: barHeight)
+                                    .shadow(color: isToday ? Theme.Palette.voltage.opacity(0.5) : .clear, radius: 8)
+                            }
+                            Text(weekdayLetter(for: day.date, isToday: isToday))
+                                .font(.system(size: 9, weight: .semibold))
+                                .tracking(1.0)
+                                .foregroundStyle(isToday ? Theme.Palette.voltage : Theme.Palette.smoke)
                         }
-                        Text(weekday(i))
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(1.0)
-                            .foregroundStyle(i == 6 ? Theme.Palette.voltage : Theme.Palette.smoke)
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
                 }
+            } else {
+                // Hairline placeholder keeps the card height stable so the
+                // surrounding layout doesn't reflow as the user logs their
+                // first meals across multiple days.
+                Rectangle()
+                    .fill(Theme.Palette.hairline)
+                    .frame(height: 1)
+                    .padding(.vertical, 60)
             }
         }
         .padding(20)
@@ -303,22 +335,92 @@ struct ProgressScreen: View {
     // MARK: past days
 
     private var pastDaysList: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        // Real aggregation from `appModel.meals`. Group by start-of-day,
+        // sum kcal per day, sort newest first, and cap to the most recent
+        // ~14 days that actually have logs. Days with zero meals are
+        // skipped so a sparse user doesn't see a wall of "0 / 2200" rows.
+        let recentDays = recentDailySummaries(limit: 14)
+        let goal = max(1, appModel.totals.calorieGoal)
+
+        return VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "Recent days", eyebrow: "Past two weeks")
-            VStack(spacing: 8) {
-                ForEach(Array(MockData.historySummaries.enumerated()), id: \.offset) { _, day in
-                    HistoryRow(date: day.date, calories: day.calories, goal: day.goal)
+            if recentDays.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Your daily summaries will appear here once you log meals.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.Palette.smoke)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                        .fill(Theme.Palette.inkSurface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                                .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
+                        )
+                )
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(recentDays.enumerated()), id: \.offset) { _, day in
+                        HistoryRow(date: day.date, calories: day.calories, goal: goal)
+                    }
                 }
             }
         }
     }
 
-    // MARK: helpers
+    // MARK: aggregation helpers
 
-    private let barHeights: [CGFloat] = [70, 86, 64, 96, 110, 78, 96]
+    /// (date, kcal) tuples for the last 7 calendar days, oldest at index
+    /// 0 and today at index 6. Days with no meals contribute 0 — the
+    /// chart's normalization step handles those without divide-by-zero.
+    private func weeklyCalorieTotals() -> [(date: Date, calories: Int)] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        // Bucket meals into start-of-day keys once instead of filtering
+        // the meal list 7 times. O(n) vs O(7n) — matters when a power
+        // user has hundreds of logged meals.
+        var buckets: [Date: Int] = [:]
+        for meal in appModel.meals {
+            let day = cal.startOfDay(for: meal.loggedAt)
+            buckets[day, default: 0] += meal.calories
+        }
+        return (0..<7).reversed().compactMap { offset in
+            guard let day = cal.date(byAdding: .day, value: -offset, to: today) else { return nil }
+            return (day, buckets[day] ?? 0)
+        }
+    }
 
-    private func weekday(_ i: Int) -> String {
-        ["M", "T", "W", "T", "F", "S", "S"][i]
+    /// Newest-first list of (date, kcal) tuples for days where the user
+    /// actually logged something. Capped at `limit` so the section never
+    /// becomes a scroll trap.
+    private func recentDailySummaries(limit: Int) -> [(date: Date, calories: Int)] {
+        let cal = Calendar.current
+        var buckets: [Date: Int] = [:]
+        for meal in appModel.meals {
+            let day = cal.startOfDay(for: meal.loggedAt)
+            buckets[day, default: 0] += meal.calories
+        }
+        return buckets
+            .map { (date: $0.key, calories: $0.value) }
+            .filter { $0.calories > 0 }
+            .sorted { $0.date > $1.date }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    /// Single-letter weekday label keyed off the bar's date. Today gets
+    /// "T" so the rightmost bar always reads consistently regardless of
+    /// what day of the week it is.
+    private func weekdayLetter(for date: Date, isToday: Bool) -> String {
+        if isToday { return "T" }
+        let weekday = Calendar.current.component(.weekday, from: date)
+        // Calendar weekday: 1 = Sun, 2 = Mon, ..., 7 = Sat
+        let letters = ["S", "M", "T", "W", "T", "F", "S"]
+        return letters[(weekday - 1) % 7]
     }
 
     private func deltaString(_ value: Double, unit: String) -> String {

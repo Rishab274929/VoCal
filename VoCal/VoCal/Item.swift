@@ -285,6 +285,11 @@ final class AppModel: ObservableObject {
         totals.fatEaten = max(0, totals.fatEaten - meal.fat)
         DailyMacrosSnapshot.write(from: totals)
         persist()
+
+        // Mirror the deletion to Apple Health so a meal removed in-app
+        // doesn't leave an orphan HKCorrelation behind. Mirrors the
+        // fire-and-forget pattern in `addMeal`; no-op if unauthorized.
+        Task { await VoCalHealth.shared.delete(meal: meal) }
     }
 
     func addBodyMetric(_ metric: BodyMetric) {
