@@ -266,6 +266,7 @@ struct MealCard: View {
 
 struct MicButton: View {
     var action: () -> Void
+    var size: CGFloat = 64
     @State private var pulse = false
     @State private var rotation = 0.0
 
@@ -275,11 +276,11 @@ struct MicButton: View {
                 // Outer pulse
                 Circle()
                     .strokeBorder(Theme.Palette.pulse.opacity(0.55), lineWidth: 1.5)
-                    .scaleEffect(pulse ? 1.85 : 1)
+                    .scaleEffect(pulse ? 1.7 : 1)
                     .opacity(pulse ? 0 : 1)
                 Circle()
                     .strokeBorder(Theme.Palette.pulse.opacity(0.35), lineWidth: 1)
-                    .scaleEffect(pulse ? 1.55 : 1)
+                    .scaleEffect(pulse ? 1.45 : 1)
                     .opacity(pulse ? 0 : 1)
 
                 // Core orb
@@ -288,7 +289,7 @@ struct MicButton: View {
                     .overlay(
                         Circle().strokeBorder(Theme.Palette.pulse, lineWidth: 2)
                     )
-                    .shadow(color: Theme.Palette.pulse.opacity(0.4), radius: 12)
+                    .shadow(color: Theme.Palette.pulse.opacity(0.4), radius: 14)
 
                 // Rotating tick marks (audio meter feel)
                 ZStack {
@@ -296,17 +297,17 @@ struct MicButton: View {
                         Rectangle()
                             .fill(Theme.Palette.pulse.opacity(i % 3 == 0 ? 0.9 : 0.25))
                             .frame(width: 1, height: i % 3 == 0 ? 5 : 2.5)
-                            .offset(y: -26)
+                            .offset(y: -(size * 0.42))
                             .rotationEffect(.degrees(Double(i) / 24 * 360))
                     }
                 }
                 .rotationEffect(.degrees(rotation))
 
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.system(size: size * 0.32, weight: .bold))
                     .foregroundStyle(Theme.Palette.bone)
             }
-            .frame(width: 64, height: 64)
+            .frame(width: size, height: size)
         }
         .buttonStyle(.plain)
         .onAppear {
@@ -509,24 +510,25 @@ struct EditorialTabBar: View {
         HStack(spacing: 0) {
             tabButton(.today)
             tabButton(.progress)
-            // Mic slot (the actual button overlays this gap so the row stays evenly spaced)
-            Color.clear.frame(width: 72)
+            // Mic sits INLINE in the center slot rather than floating with
+            // an offset. The old floating overlay was extending the
+            // perceived bar height by ~30pt + the FAB's shadow radius, and
+            // overhanging into content above. Inlined, it's just a button.
+            MicButton(action: onMic, size: 52)
+                .frame(width: 86)
+                .padding(.top, -2)
             tabButton(.coach)
             tabButton(.profile)
         }
         .padding(.top, 8)
         .padding(.bottom, 0)
         .background(
-            Theme.Palette.ink.opacity(0.96)
+            Theme.Palette.ink
                 .overlay(alignment: .top) {
                     Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
                 }
                 .ignoresSafeArea(edges: .bottom)
         )
-        .overlay(alignment: .top) {
-            MicButton(action: onMic)
-                .offset(y: -22)
-        }
     }
 
     private func tabButton(_ tab: Tab) -> some View {
