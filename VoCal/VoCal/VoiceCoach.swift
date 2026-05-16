@@ -70,24 +70,29 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     /// Begin one conversational turn. Asks permissions if needed, then
     /// listens until the user stops speaking for ~1.5s.
     func startTurn() {
+        // Guard against double-tap on the mic button kicking off two
+        // recorder.start() calls in parallel. Only spin up if we're idle.
+        guard phase == .idle else { return }
         // Interrupt any TTS in progress.
         if synth.isSpeaking {
             synth.stopSpeaking(at: .immediate)
         }
         // Always read the freshest day-state snapshot before each turn.
         todaySnapshot = DailyMacrosSnapshot.read()
+        // Optimistically claim the phase so a second startTurn() bounces
+        // off the `guard` above before the auth Task even begins.
+        phase = .listening
 
         Task { [weak self] in
             guard let self else { return }
             await recorder.requestAuthorization()
             guard recorder.isAuthorized else {
-                lastError = "Microphone or speech permission denied."
+                lastError = "Microphone or speech permission denied. Enable both in Settings → VoCal."
                 phase = .idle
                 return
             }
             do {
                 try recorder.start()
-                phase = .listening
                 liveTranscript = ""
                 lastTranscriptUpdate = .now
                 bindTranscript()
@@ -111,12 +116,16 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
         silenceTimer = nil
         transcriptCancellable?.cancel()
         transcriptCancellable = nil
-        if recorder.isRecording {
-            _ = recorder.finish()
-        }
+        // Hard-cancel rather than `finish()` — we're aborting, not flushing.
+        // `cancel()` is sync so we don't strand the user mid-navigation.
+        recorder.cancel()
         if synth.isSpeaking {
             synth.stopSpeaking(at: .immediate)
         }
+        // Hand the audio session back to other apps so music/podcasts can
+        // resume. Without this, ducked apps stay ducked indefinitely after
+        // the user leaves Coach.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         phase = .idle
     }
 
@@ -133,6 +142,9 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     // MARK: - Live transcript handling
 
     private func bindTranscript() {
+        // Cancel any prior subscription first, otherwise repeated startTurn
+        // calls accumulate sinks that all write to liveTranscript.
+        transcriptCancellable?.cancel()
         transcriptCancellable = recorder.$partialTranscript
             .sink { [weak self] new in
                 guard let self else { return }
@@ -159,14 +171,22 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     private func finalizeTurn() {
         silenceTimer?.invalidate()
         silenceTimer = nil
-        let final = recorder.finish()
-        let prompt = final.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else {
-            phase = .idle
-            return
+        transcriptCancellable?.cancel()
+        transcriptCancellable = nil
+        // Move to thinking immediately so the UI doesn't sit on "LISTENING"
+        // while we wait ~700ms for the recognizer's final transcript.
+        phase = .thinking
+        Task { [weak self] in
+            guard let self else { return }
+            let final = await recorder.finish()
+            let prompt = final.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prompt.isEmpty else {
+                phase = .idle
+                return
+            }
+            history.append(CoachMessage(role: .user, content: prompt))
+            await callBackend(prompt: prompt)
         }
-        history.append(CoachMessage(role: .user, content: prompt))
-        Task { await callBackend(prompt: prompt) }
     }
 
     // MARK: - Backend turn
@@ -192,14 +212,27 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     // MARK: - TTS
 
     private func speak(_ text: String) {
+        // Refuse to enqueue empty utterances — synth.speak on empty string
+        // is a no-op that doesn't trigger didFinish, leaving us stuck in
+        // .speaking forever.
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            phase = .idle
+            return
+        }
         phase = .speaking
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            // Use `.mixWithOthers` rather than `.duckOthers` so the coach's
+            // voice doesn't permanently quiet whatever music/podcast the
+            // user has playing — duck/un-duck cycles on every reply are
+            // jarring. `.spokenAudio` mode hints to the OS that this is a
+            // voice stream so it routes correctly over Bluetooth + CarPlay.
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             // Best-effort — if audio session fails the synth will still try.
         }
-        let utterance = AVSpeechUtterance(string: text)
+        let utterance = AVSpeechUtterance(string: trimmed)
         utterance.voice = preferredVoice()
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95
         utterance.pitchMultiplier = 1.0
@@ -224,10 +257,24 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     // MARK: - AVSpeechSynthesizerDelegate
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor [weak self] in self?.phase = .idle }
+        Task { @MainActor [weak self] in
+            self?.releaseAudioSessionAfterPlayback()
+            self?.phase = .idle
+        }
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor [weak self] in self?.phase = .idle }
+        Task { @MainActor [weak self] in
+            self?.releaseAudioSessionAfterPlayback()
+            self?.phase = .idle
+        }
+    }
+
+    /// Drop the `.playback` audio session so music/podcasts can un-duck.
+    /// Without this every TTS reply leaves the system in a half-ducked state
+    /// until the OS reclaims the session opportunistically — users notice it
+    /// as "Spotify is quieter for no reason."
+    private func releaseAudioSessionAfterPlayback() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 }
 

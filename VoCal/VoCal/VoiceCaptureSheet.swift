@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct VoiceCaptureSheet: View {
     enum Phase { case listening, parsing, followUp, review }
@@ -69,6 +70,18 @@ struct VoiceCaptureSheet: View {
             promptRotator?.invalidate()
             recorder.stop()
         }
+        // Backgrounding while listening: iOS suspends the audio engine and
+        // the recognition task can throw. Tear down cleanly here so the
+        // mic doesn't stay "hot" against a suspended engine and so we don't
+        // hand the user a half-broken session on the next foreground.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            if recorder.isRecording {
+                recorder.cancel()
+                if phase == .listening {
+                    parseError = "Recording stopped — the app went to the background."
+                }
+            }
+        }
         .onChange(of: recorder.partialTranscript) { _, newValue in
             // Live transcript replaces the rotating placeholder once user starts speaking
             if phase == .listening, !isUserEditing, !newValue.isEmpty {
@@ -80,9 +93,24 @@ struct VoiceCaptureSheet: View {
     private func startRecordingIfPossible() {
         Task {
             await recorder.requestAuthorization()
-            guard recorder.isAuthorized else { return }
+            guard recorder.isAuthorized else {
+                // Permission denied: surface a clear message instead of
+                // leaving the user staring at a "TRANSCRIPT" placeholder
+                // with no indication anything is broken. They can still
+                // type into the field and tap "Stop & parse".
+                parseError = recorder.micAuth == .denied
+                    ? "Microphone access denied. Enable it in Settings → VoCal → Microphone."
+                    : "Speech recognition disabled. Enable it in Settings → VoCal → Speech Recognition."
+                return
+            }
+            // Guard against double-start when this is called from both
+            // onAppear and the Re-record button in quick succession — the
+            // recorder itself guards too, but clearing the prior error here
+            // avoids a stale "denied" message from a prior session.
+            guard !recorder.isRecording else { return }
             do {
                 try recorder.start()
+                parseError = nil
             } catch {
                 parseError = error.localizedDescription
             }
@@ -309,8 +337,13 @@ struct VoiceCaptureSheet: View {
                     withAnimation(.spring) {
                         phase = .listening
                         followUpAnswer = ""
+                        followUpQuestion = nil
                         parseError = nil
                     }
+                    // Restart the mic on Back, otherwise the user sees a
+                    // listening UI with no LIVE TRANSCRIPT pulse and the
+                    // partials never flow in.
+                    startRecordingIfPossible()
                 }
                 VoltageButton(title: "Submit", icon: "arrow.right") {
                     Task { await parseCurrentTranscript(followUp: followUpAnswer) }
@@ -320,10 +353,17 @@ struct VoiceCaptureSheet: View {
 
             case .review:
                 GhostButton(title: "Re-record", icon: "arrow.counterclockwise") {
+                    // Reset EVERY piece of session state so the next round
+                    // doesn't inherit a stale follow-up question or answer
+                    // (previously you could record A → follow-up → save →
+                    // record B → see A's follow-up still primed).
                     isUserEditing = false
                     transcriptDraft = ""
                     parsedMeal = nil
                     parseReasoning = ""
+                    parseError = nil
+                    followUpQuestion = nil
+                    followUpAnswer = ""
                     withAnimation(.spring) { phase = .listening }
                     startRecordingIfPossible()
                 }
@@ -339,19 +379,32 @@ struct VoiceCaptureSheet: View {
     // MARK: parsing pipeline
 
     private func parseCurrentTranscript(followUp: String? = nil) async {
-        // Flush mic if still capturing
+        // Flush mic if still capturing. `finish()` awaits the recognizer's
+        // final `isFinal` callback (up to ~700ms) so punctuation + casing
+        // matches what the user actually said.
         if recorder.isRecording {
-            let final = recorder.finish()
-            if !final.isEmpty {
+            let final = await recorder.finish()
+            if !final.isEmpty, !isUserEditing {
                 transcriptDraft = final
             }
         }
 
         parseError = nil
         parseStartedAt = Date()
-        withAnimation(.easeInOut) { phase = .parsing }
 
         let payloadTranscript = transcriptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Don't ship an empty string to the parser. Without this guard we'd
+        // flip to .parsing, hit the network with "", and silently apply the
+        // generic 450 kcal fallback estimate — a confusing UX.
+        if payloadTranscript.isEmpty && followUp == nil {
+            parseError = recorder.isAuthorized
+                ? "Didn't catch that. Try again."
+                : "Microphone access denied. Enable it in Settings to use voice."
+            return
+        }
+
+        withAnimation(.easeInOut) { phase = .parsing }
 
         // Tier 0: on-device canon. Resolves whole foods + common prepared
         // items instantly without any network call. Only used when there is
