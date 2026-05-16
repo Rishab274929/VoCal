@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import '../sheets/barcode_scanner_sheet.dart';
 import '../sheets/meal_photo_sheet.dart';
 import '../sheets/voice_capture_sheet.dart';
 import '../state/app_model.dart';
@@ -57,12 +58,47 @@ class _ContentViewState extends State<ContentView> {
     showPaywallSheet(context);
   }
 
+  /// Open the voice capture sheet, but gate on the free-tier cap first.
+  /// Free users get [AppModel.freeVoiceCapPerDay] voice logs per local day;
+  /// once they're past the cap we redirect to the paywall.
+  ///
+  /// After the sheet closes, we detect whether a meal was actually saved by
+  /// comparing AppModel.lastSavedMeal before vs. after. This avoids having
+  /// to thread a "did the user save?" return value through the sheet API,
+  /// which would force every other call site to change too.
+  Future<void> _launchVoiceCapture() async {
+    final app = context.read<AppModel>();
+    final allowed = await app.canLogVoice();
+    if (!mounted) return;
+    if (!allowed) {
+      // Cap hit — present the paywall instead of the voice sheet so the
+      // user understands the action is gated, not failing silently.
+      showPaywallSheet(context);
+      return;
+    }
+
+    // Snapshot lastSavedMeal so we can detect a save after the sheet closes.
+    // We compare by id — a re-record + save of the same logical meal
+    // produces a fresh MealEntry with a new id, so `.id` comparison works.
+    final beforeId = app.lastSavedMeal?.id;
+    await showVoiceCaptureSheet(context);
+    if (!mounted) return;
+    final after = app.lastSavedMeal;
+    if (after != null && after.id != beforeId) {
+      // A meal was saved during this voice sheet → count it against the cap.
+      // Photo and barcode flows don't bump the counter (per iOS: Free tier
+      // is unlimited for photo + barcode; only voice is capped at 3/day).
+      await app.recordVoiceLog();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screen = switch (_tab) {
       AppTab.today => TodayView(
-          onShowVoice: () => showVoiceCaptureSheet(context),
+          onShowVoice: _launchVoiceCapture,
           onShowPhoto: () => showMealPhotoSheet(context),
+          onShowBarcode: () => showBarcodeScannerSheet(context),
         ),
       AppTab.progress => const ProgressScreen(),
       AppTab.coach => const CoachView(),
@@ -85,7 +121,7 @@ class _ContentViewState extends State<ContentView> {
                 EditorialTabBar(
                   selection: _tab,
                   onSelect: (t) => setState(() => _tab = t),
-                  onMic: () => showVoiceCaptureSheet(context),
+                  onMic: _launchVoiceCapture,
                 ),
               ],
             ),

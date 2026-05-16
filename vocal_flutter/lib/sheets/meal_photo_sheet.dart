@@ -1,6 +1,12 @@
 // Photo-first logging — Flutter port of CameraCaptureView.swift's
-// MealPhotoSheet. Snap/pick → simulated first pass → "Anything underneath
-// I can't see?" follow-up → save.
+// MealPhotoSheet. Snap/pick → POST /api/photo/parse → optional
+// "Anything underneath I can't see?" follow-up → save.
+//
+// Important: we do NOT fabricate a fallback meal on network error. Inventing
+// macros from nothing is the trust-killer pattern; we surface the failure
+// and let the user retry. (Voice has a canon fallback for offline use, but
+// photo has no analog — there's nothing on-device that can guess macros
+// from pixels without a model.)
 
 import 'dart:io';
 
@@ -9,6 +15,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
+import '../services/photo_api.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -36,11 +43,17 @@ class MealPhotoSheet extends StatefulWidget {
 class _MealPhotoSheetState extends State<MealPhotoSheet> {
   final _picker = ImagePicker();
   final _followUp = TextEditingController();
+  // Optional spoken/typed context the user adds before the parse. The image
+  // picker UI doesn't currently expose a voice-context field — left here as
+  // a hook so the next iteration can show a "describe what's on the plate"
+  // text input alongside the preview without restructuring this state.
+  String _voiceContext = '';
 
   File? _image;
   bool _parsing = false;
   ParsedMeal? _firstPass;
   String? _followUpQuestion;
+  String? _error;
   MealEntry? _saved;
 
   @override
@@ -53,51 +66,107 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
     final x = await _picker.pickImage(source: source, imageQuality: 85);
     if (x == null) return;
     if (!mounted) return;
-    setState(() => _image = File(x.path));
+    setState(() {
+      _image = File(x.path);
+      _firstPass = null;
+      _followUpQuestion = null;
+      _error = null;
+      _saved = null;
+    });
     await _runFirstPass();
   }
 
+  /// First pass: POST the image to /api/photo/parse with whatever voice
+  /// context the user already provided. The response is either a meal we
+  /// can preview, a follow-up question, or an error.
   Future<void> _runFirstPass() async {
     if (!mounted) return;
-    setState(() => _parsing = true);
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
     setState(() {
-      _firstPass = ParsedMeal(
-        name: 'Layered salad bowl',
-        detail: 'Greens, chicken, quinoa, dressing',
-        kcal: 520,
-        proteinG: 38,
-        carbsG: 42,
-        fatG: 20,
-        slot: 'lunch',
-        source: 'photo',
-        confidence: 0.7,
-      );
-      _followUpQuestion = "Anything underneath I can't see?";
-      _parsing = false;
+      _parsing = true;
+      _error = null;
     });
+    final file = _image;
+    if (file == null) {
+      setState(() => _parsing = false);
+      return;
+    }
+    try {
+      final res = await PhotoApiClient.parseMeal(
+        image: file,
+        voiceContext: _voiceContext.isEmpty ? null : _voiceContext,
+      );
+      if (!mounted) return;
+      setState(() {
+        _parsing = false;
+        _firstPass = res.meal;
+        _followUpQuestion = res.followUpQuestion;
+      });
+    } on PhotoApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _parsing = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _parsing = false;
+        _error = 'Could not analyze photo: $e';
+      });
+    }
   }
 
-  void _answerFollowUp() {
-    final base = _firstPass;
-    if (base == null) return;
-    final a = _followUp.text.toLowerCase();
-    final adj = base.copy();
-    if (a.contains('quinoa') || a.contains('rice')) {
-      adj.kcal += 110;
-      adj.carbsG += 22;
-      adj.proteinG += 4;
-      adj.detail = 'Greens, chicken, quinoa (extra), dressing';
-    } else if (a.contains('oil') || a.contains('dressing')) {
-      adj.kcal += 90;
-      adj.fatG += 10;
-    }
+  /// User answered the follow-up. Re-POST with the answer attached; same
+  /// response handling as the first pass (could yield another follow-up
+  /// in pathological cases, but the backend prompt strongly biases toward
+  /// returning a meal on the second turn).
+  Future<void> _answerFollowUp() async {
+    final answer = _followUp.text.trim();
+    if (answer.isEmpty) return;
+    final file = _image;
+    if (file == null) return;
     setState(() {
-      _firstPass = adj;
-      _followUpQuestion = null;
+      _parsing = true;
+      _error = null;
     });
-    _commit(adj, MealSource.voicePhoto);
+    try {
+      final res = await PhotoApiClient.parseMeal(
+        image: file,
+        voiceContext: _voiceContext.isEmpty ? null : _voiceContext,
+        followUpAnswer: answer,
+      );
+      if (!mounted) return;
+      if (res.meal != null) {
+        setState(() {
+          _parsing = false;
+          _firstPass = res.meal;
+          _followUpQuestion = null;
+        });
+        _commit(res.meal!, MealSource.voicePhoto);
+      } else {
+        // Server still wants more clarification — surface the new question
+        // and let the user answer again. Clear the previous answer so the
+        // input box invites a fresh response.
+        setState(() {
+          _parsing = false;
+          _followUpQuestion = res.followUpQuestion ??
+              "I still need a bit more — what else is on the plate?";
+          _followUp.clear();
+        });
+      }
+    } on PhotoApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _parsing = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _parsing = false;
+        _error = 'Could not analyze photo: $e';
+      });
+    }
   }
 
   void _commit(ParsedMeal m, MealSource source) {
@@ -175,14 +244,26 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
                   children: [
                     Expanded(
                       child: GhostButton(
-                        title: 'Retake',
-                        icon: Icons.refresh,
-                        onTap: () => setState(() {
-                          _image = null;
-                          _firstPass = null;
-                          _followUpQuestion = null;
-                          _followUp.clear();
-                        }),
+                        title: _error != null ? 'Retry' : 'Retake',
+                        icon: _error != null
+                            ? Icons.refresh
+                            : Icons.refresh,
+                        onTap: () {
+                          // If we errored out, "Retry" = re-POST the same
+                          // image rather than making the user re-shoot it.
+                          if (_error != null) {
+                            _runFirstPass();
+                          } else {
+                            setState(() {
+                              _image = null;
+                              _firstPass = null;
+                              _followUpQuestion = null;
+                              _error = null;
+                              _followUp.clear();
+                              _voiceContext = '';
+                            });
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -193,8 +274,16 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
                         icon: _followUpQuestion == null
                             ? Icons.check
                             : Icons.arrow_forward,
-                        enabled: _followUpQuestion == null ||
-                            _followUp.text.trim().isNotEmpty,
+                        // Save is only valid when we actually have a meal —
+                        // the original code could call _commit(_firstPass!)
+                        // when the server returned only a follow-up question
+                        // (meal == null), which crashed with a null-check
+                        // assertion. Now disabled in that state.
+                        enabled: _parsing
+                            ? false
+                            : (_followUpQuestion == null
+                                ? _firstPass != null
+                                : _followUp.text.trim().isNotEmpty),
                         onTap: () {
                           if (_followUpQuestion == null) {
                             if (_firstPass != null) {
@@ -287,6 +376,27 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
             Text('Analyzing photo…',
                 style: AppType.body(12, color: Palette.smoke)),
           ])
+        else if (_error != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: cardDecoration(
+                fill: Palette.pulse.withOpacity(0.08),
+                border: Palette.pulse.withOpacity(0.5)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Eyebrow("COULDN'T PARSE", color: Palette.pulse),
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style: AppType.body(13, color: Palette.bone)),
+                const SizedBox(height: 6),
+                Text(
+                    'Tap Retry to try again, or use the voice flow instead.',
+                    style: AppType.body(12, color: Palette.smoke)),
+              ],
+            ),
+          )
         else if (_saved != null)
           Container(
             width: double.infinity,

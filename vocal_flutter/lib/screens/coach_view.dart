@@ -1,10 +1,16 @@
 // Voice-first nutrition coach — Flutter port of CoachView.swift.
-// Heuristic replies offline so the demo always feels alive.
+//
+// Replies come from POST /api/coach (CoachApiClient). On network failure we
+// show a single canned line — we intentionally do NOT run a local heuristic
+// here. The previous local heuristic disagreed with the iOS coach's answers
+// for the same prompt + day-state, which led to "the coach lied to me on my
+// phone but not my friend's phone" support reports.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
+import '../services/coach_api.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -28,21 +34,46 @@ class _CoachViewState extends State<CoachView> {
     super.dispose();
   }
 
-  void _send() {
+  /// Canned fallback shown on any network/parse failure. Intentionally
+  /// generic so the user knows it's a comms problem (not the coach's
+  /// opinion). Mirrors iOS's user-visible error string when the API throws.
+  static const String _fallbackReply =
+      "I'm having trouble connecting. Try again in a moment.";
+
+  Future<void> _send() async {
     final app = context.read<AppModel>();
     final trimmed = _controller.text.trim();
     if (trimmed.isEmpty) return;
+
+    // Snapshot the prior history BEFORE appending the new user turn —
+    // otherwise the LLM sees the just-sent message twice (once in `history`,
+    // once as the `prompt`) and tends to echo it back.
+    final priorHistory = List<CoachMessage>.from(app.coachMessages);
+
     app.appendCoach(CoachMessage(role: CoachRole.user, content: trimmed));
     _controller.clear();
     setState(() => _thinking = true);
-    Future.delayed(const Duration(milliseconds: 700), () {
-      if (!mounted) return;
-      final reply = _reply(trimmed, app);
-      app.appendCoach(
-          CoachMessage(role: CoachRole.assistant, content: reply));
-      setState(() => _thinking = false);
-      _scrollToEnd();
-    });
+    _scrollToEnd();
+
+    String reply;
+    try {
+      reply = await CoachApiClient.send(
+        prompt: trimmed,
+        history: priorHistory,
+        totals: CoachTotals.fromDailyTotals(app.totals),
+      );
+    } on CoachApiException {
+      reply = _fallbackReply;
+    } catch (_) {
+      // Defensive: any unexpected error still surfaces the canned line
+      // rather than the local heuristic — see the file-header note.
+      reply = _fallbackReply;
+    }
+
+    if (!mounted) return;
+    app.appendCoach(
+        CoachMessage(role: CoachRole.assistant, content: reply));
+    setState(() => _thinking = false);
     _scrollToEnd();
   }
 
@@ -54,37 +85,6 @@ class _CoachViewState extends State<CoachView> {
             curve: Curves.easeOut);
       }
     });
-  }
-
-  String _reply(String prompt, AppModel app) {
-    final lower = prompt.toLowerCase();
-    final t = app.totals;
-    final proteinShort = (t.proteinGoal - t.proteinEaten) < 0
-        ? 0
-        : t.proteinGoal - t.proteinEaten;
-    final kcalLeft = t.calorieRemaining;
-
-    if (lower.contains('protein')) {
-      return "You're at ${t.proteinEaten}g of ${t.proteinGoal}g protein — "
-          "${proteinShort}g short with $kcalLeft kcal left. A grilled chicken "
-          "bowl from Cava (≈40g protein, ~520 kcal) or Chick-fil-A's grilled "
-          "nuggets 12-ct (~38g protein, ~210 kcal) would clear most of it.";
-    }
-    if (lower.contains('pasta') || lower.contains('dinner')) {
-      return "With $kcalLeft kcal to play with, a 2-cup serving of spaghetti "
-          "pomodoro lands around 560 kcal. Add a 4 oz grilled chicken breast "
-          "(~190 kcal, 35g protein) and you're at 750 kcal — well under "
-          "budget, and you finish the day on protein.";
-    }
-    if (lower.contains('hungry') || lower.contains('snack')) {
-      return "Could be a protein gap — you've leaned breakfast-heavy and "
-          "light on protein at lunch. A Greek yogurt + handful of almonds "
-          "(~250 kcal, 18g protein) usually kills the 4pm dip without "
-          "ruining dinner.";
-    }
-    return "I'm watching your day: ${t.caloriesEaten} eaten, $kcalLeft "
-        "remaining, ${t.proteinEaten}g protein in. What were you thinking "
-        "of having?";
   }
 
   Widget _suggestion(String text) {
