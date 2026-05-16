@@ -16,6 +16,30 @@ struct ContentView: View {
     @State private var showingPhoto = false
     @State private var showingBarcode = false
     @State private var showingPaywall = false
+    @AppStorage("vocal.dailyVoiceCount") private var dailyVoiceCount: Int = 0
+    @AppStorage("vocal.dailyVoiceDate") private var dailyVoiceDate: String = ""
+
+    /// Free tier cap. Set generously so the user can taste the product
+    /// before the paywall — but low enough that heavy users feel it.
+    private static let freeDailyVoiceCap = 3
+
+    /// Show the paywall on cold launch for free users who've been around
+    /// for at least 1 day (gives them a chance to log something first).
+    private func maybeShowOnboardingPaywall() {
+        guard appModel.profile.entitlement == .free else { return }
+        guard appModel.hasCompletedOnboarding else { return }
+        // The first launch after onboarding goes straight to a paywall;
+        // we use AppStorage to remember we showed it so we don't spam.
+        let key = "vocal.didShowFirstPaywall"
+        let didShow = UserDefaults.standard.bool(forKey: key)
+        if !didShow {
+            UserDefaults.standard.set(true, forKey: key)
+            // Defer a beat so onboarding's fade-out animation completes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                showingPaywall = true
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -59,6 +83,10 @@ struct ContentView: View {
             PaywallSheet()
                 .presentationDetents([.large])
                 .presentationBackground(Theme.Palette.ink)
+        }
+        .onAppear { maybeShowOnboardingPaywall() }
+        .onChange(of: appModel.hasCompletedOnboarding) { _, done in
+            if done { maybeShowOnboardingPaywall() }
         }
     }
 }

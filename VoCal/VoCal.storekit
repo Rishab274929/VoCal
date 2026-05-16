@@ -1,0 +1,78 @@
+{
+  "identifier" : "8AED9C9A-VOCAL-PRO",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "vocal-debug-app",
+    "_developerTeamID" : "QAWD9U9CF6",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "vocal-pro-group",
+      "localizations" : [
+        {
+          "description" : "Voice-first calorie tracking. Unlimited logs, restaurant intelligence, voice coach, body-fat from selfies.",
+          "displayName" : "VoCal Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "VoCal Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "vocal-pro-monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited voice logs, restaurant intelligence, voice coach, photo fact-check, body-fat from selfies, Apple Watch + Live Activity.",
+              "displayName" : "VoCal Pro · Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.EricSpencer.VoCal.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "VoCal Pro Monthly",
+          "subscriptionGroupID" : "vocal-pro-group",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "vocal-pro-annual",
+          "introductoryOffer" : {
+            "internalID" : "vocal-pro-annual-trial",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Save 33% vs monthly. Everything in Pro, billed annually. Includes 7-day free trial.",
+              "displayName" : "VoCal Pro · Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.EricSpencer.VoCal.pro.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "VoCal Pro Annual",
+          "subscriptionGroupID" : "vocal-pro-group",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

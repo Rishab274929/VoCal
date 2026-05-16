@@ -12,12 +12,12 @@ import SwiftUI
 struct PaywallSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var store = StoreKitStore()
 
     var onSubscribe: (() -> Void)? = nil
     var onSkip: (() -> Void)? = nil
 
-    enum Plan: String, CaseIterable { case monthly, annual }
-    @State private var plan: Plan = .annual
+    @State private var plan: StoreKitStore.Plan = .annual
 
     var body: some View {
         ZStack {
@@ -151,12 +151,12 @@ struct PaywallSheet: View {
 
     private var planPicker: some View {
         HStack(spacing: 10) {
-            planCard(.annual, price: "$39.99", per: "year", savings: "Save 33%")
-            planCard(.monthly, price: "$4.99", per: "month", savings: nil)
+            planCard(.annual,  price: store.displayPrice(for: .annual),  per: store.priceUnit(for: .annual),  savings: "Save 33%")
+            planCard(.monthly, price: store.displayPrice(for: .monthly), per: store.priceUnit(for: .monthly), savings: nil)
         }
     }
 
-    private func planCard(_ p: Plan, price: String, per: String, savings: String?) -> some View {
+    private func planCard(_ p: StoreKitStore.Plan, price: String, per: String, savings: String?) -> some View {
         let active = plan == p
         return Button { plan = p } label: {
             VStack(alignment: .leading, spacing: 8) {
@@ -202,15 +202,28 @@ struct PaywallSheet: View {
 
     private var footer: some View {
         VStack(spacing: 10) {
-            VoltageButton(title: subscribeLabel, icon: "lock.open.fill") {
-                appModel.upgradeToPro()
-                onSubscribe?()
-                if onSubscribe == nil { dismiss() }
+            VoltageButton(
+                title: store.isPurchasing ? "Processing…" : subscribeLabel,
+                icon: store.isPurchasing ? nil : "lock.open.fill"
+            ) {
+                Task { await purchase() }
             }
+            .opacity(store.isPurchasing ? 0.5 : 1)
+            .allowsHitTesting(!store.isPurchasing)
+
+            if let err = store.lastError {
+                Text(err)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Palette.pulse)
+                    .multilineTextAlignment(.center)
+            }
+
             HStack(spacing: 14) {
-                Button("Restore") { /* RevenueCat restore */ }
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.Palette.smoke)
+                Button("Restore") {
+                    Task { await store.restore() }
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Palette.smoke)
                 if let skip = onSkip {
                     Text("·").font(.system(size: 10)).foregroundStyle(Theme.Palette.smoke)
                     Button("Maybe later", action: skip)
@@ -219,10 +232,34 @@ struct PaywallSheet: View {
                 }
             }
         }
+        .task {
+            await store.loadProducts()
+        }
+        .onChange(of: store.hasPro) { _, hasPro in
+            // Auto-dismiss the paywall the moment the entitlement flips
+            // (either after a fresh purchase or a Restore).
+            if hasPro {
+                appModel.upgradeToPro()
+                onSubscribe?()
+                if onSubscribe == nil { dismiss() }
+            }
+        }
+    }
+
+    private func purchase() async {
+        let succeeded = await store.purchase(plan)
+        if succeeded {
+            // The hasPro onChange handler above will fire and trigger
+            // upgrade + dismiss.
+        }
     }
 
     private var subscribeLabel: String {
-        plan == .annual ? "Start free 7-day trial — $39.99/yr" : "Subscribe — $4.99/mo"
+        let price = store.displayPrice(for: plan)
+        switch plan {
+        case .annual:  return "Start free 7-day trial — \(price)/yr"
+        case .monthly: return "Subscribe — \(price)/mo"
+        }
     }
 }
 
