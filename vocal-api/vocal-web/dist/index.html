@@ -1,321 +1,633 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VoCal — Just say what you ate.</title>
-    <meta name="description" content="The first calorie tracker that actually listens. Speak a meal — even from a chain — and it logs with real macros in seconds." />
-    <meta name="theme-color" content="#0A0A0B" />
-    <meta property="og:title" content="VoCal — Just say what you ate." />
-    <meta property="og:description" content="The first calorie tracker that actually listens. Restaurant items by name. No typing. No scrolling." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://vocal.best/" />
-    <link rel="icon" href="/favicon.png" type="image/png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
-    <style>
-      :root {
-        color-scheme: dark;
-        --ink: #0A0A0B;
-        --ink-raised: #121214;
-        --ink-surface: #18181C;
-        --hairline: rgba(255,255,255,0.07);
-        --hairline-strong: rgba(255,255,255,0.13);
-        --bone: #F6F4EC;
-        --ash: #BDBBB2;
-        --smoke: #86847B;
-        --voltage: #E5FF59;
-        --voltage-deep: #B7D03A;
-        --pulse: #FF5436;
-      }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0; padding: 0;
-        background: var(--ink);
-        color: var(--bone);
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-        min-height: 100vh;
-      }
-      .serif {
-        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
-        font-feature-settings: "kern", "liga";
-      }
-      .italic { font-style: italic; }
-      .eyebrow {
-        font-size: 10px; font-weight: 600;
-        letter-spacing: 0.18em; text-transform: uppercase;
-        color: var(--smoke);
-      }
-      .eyebrow-pulse { color: var(--pulse); }
-      a { color: var(--bone); text-decoration: none; }
-      a:hover { color: var(--voltage); }
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>VoCal — Just say what you ate.</title>
+<meta name="description" content="The first calorie tracker that actually listens. Speak a meal — even from a chain — and it logs with real macros in seconds." />
+<meta name="theme-color" content="#0A0A0B" />
+<meta property="og:title" content="VoCal — Just say what you ate." />
+<meta property="og:description" content="The first calorie tracker that actually listens. Restaurant items by name. No typing. No scrolling." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://vocal.best/" />
+<link rel="icon" href="/favicon.png" type="image/png" />
+<link rel="apple-touch-icon" href="/favicon.png" />
 
-      body::before {
-        content: "";
-        position: fixed; inset: 0;
-        background:
-          radial-gradient(circle at 15% -10%, rgba(229,255,89,0.10) 0%, transparent 40%),
-          radial-gradient(circle at 90% 5%, rgba(255,84,54,0.06) 0%, transparent 35%);
-        pointer-events: none;
-        z-index: 0;
-      }
-      main, header, footer { position: relative; z-index: 1; }
+<!-- Clash Display (display grotesk) + Plus Jakarta Sans (text) + Fraunces italic (accents) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700,500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,400;1,9..144,500&display=swap" rel="stylesheet" />
 
-      header {
-        max-width: 1080px; margin: 0 auto;
-        padding: 28px 32px;
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 16px;
-      }
-      .wordmark {
-        font-size: 22px; font-weight: 600;
-        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
-        font-style: italic;
-      }
-      .wordmark .vo { color: var(--bone); }
-      .wordmark .cal { color: var(--voltage); }
-      .nav { display: flex; gap: 22px; align-items: center; font-size: 13px; font-weight: 500; color: var(--ash); }
-      .nav a { color: var(--ash); }
-      .cta {
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 10px 18px;
-        border-radius: 999px;
-        background: var(--voltage);
-        color: var(--ink) !important;
-        font-weight: 600; font-size: 13px;
-        transition: transform 0.15s ease;
-      }
-      .cta:hover { color: var(--ink) !important; transform: translateY(-1px); }
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Clash Display"', 'system-ui', 'sans-serif'],
+          sans:    ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+          serif:   ['"Fraunces"', 'Georgia', 'serif'],
+        },
+        colors: {
+          ink:        '#0A0A0B',  // page bg
+          'ink-raised':'#121214', // card outer
+          'ink-surf': '#18181C',  // card inner / hover
+          bone:       '#F6F4EC',  // primary text
+          ash:        '#BDBBB2',  // body text
+          smoke:      '#86847B',  // captions
+          voltage:    '#E5FF59',  // brand accent
+          'voltage-deep': '#B7D03A',
+          pulse:      '#FF5436',  // secondary accent (eyebrow only)
+        },
+        boxShadow: {
+          float:  '0 2px 4px -2px rgba(0,0,0,0.55), 0 28px 60px -24px rgba(0,0,0,0.7)',
+          floatl: '0 4px 8px -4px rgba(0,0,0,0.55), 0 50px 110px -30px rgba(0,0,0,0.8)',
+          inset:  'inset 0 1px 1px rgba(255,255,255,0.04), inset 0 -1px 1px rgba(0,0,0,0.4)',
+          voltage:'0 8px 32px rgba(229,255,89,0.18)',
+        },
+        transitionTimingFunction: {
+          fluid: 'cubic-bezier(0.22, 1, 0.36, 1)',
+          spring:'cubic-bezier(0.32, 0.72, 0, 1)',
+        },
+      },
+    },
+  };
+</script>
 
-      main { max-width: 1080px; margin: 0 auto; padding: 0 32px 80px; }
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0A0A0B;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: #E5FF59; color: #0A0A0B; }
 
-      .hero { padding: 60px 0 40px; }
-      .hero h1 {
-        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
-        font-weight: 500;
-        font-size: clamp(40px, 7vw, 84px);
-        line-height: 1.02;
-        margin: 18px 0 0;
-        letter-spacing: -0.01em;
-      }
-      .hero h1 .accent { color: var(--voltage); font-style: italic; }
-      .hero p {
-        max-width: 620px; margin: 24px 0 0;
-        font-size: 17px; line-height: 1.5; color: var(--ash);
-      }
-      .hero .actions { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
-      .ghost {
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 10px 18px;
-        border-radius: 999px;
-        border: 1px solid var(--hairline-strong);
-        font-weight: 600; font-size: 13px;
-        color: var(--bone);
-      }
-      .ghost:hover { border-color: var(--bone); color: var(--bone); }
+  /* Fixed, pointer-events-none film grain (performance guardrail) */
+  .grain::after{
+    content:""; position:fixed; inset:0; z-index:60; pointer-events:none; opacity:.045;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+  }
 
-      .examples {
-        margin: 56px 0 0;
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 12px;
-      }
-      .example {
-        padding: 16px 18px;
-        border: 1px solid var(--hairline-strong);
-        border-radius: 16px;
-        background: var(--ink-surface);
-        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
-        font-style: italic;
-        font-size: 15px;
-        color: var(--bone);
-        display: flex; align-items: center; gap: 12px;
-      }
-      .example::before {
-        content: "▶";
-        color: var(--voltage);
-        font-size: 9px;
-        font-style: normal;
-      }
+  /* Scroll-reveal */
+  .reveal{ opacity:0; transform:translateY(36px); filter:blur(8px); }
+  .reveal.in{ opacity:1; transform:none; filter:blur(0);
+    transition:opacity .9s cubic-bezier(0.22,1,0.36,1), transform 1s cubic-bezier(0.22,1,0.36,1), filter 1s cubic-bezier(0.22,1,0.36,1); }
 
-      section.wedge { margin: 84px 0 0; }
-      section h2 {
-        font-family: "New York", "Charter", "Iowan Old Style", Georgia, serif;
-        font-weight: 500;
-        font-size: clamp(28px, 4vw, 42px);
-        margin: 14px 0 24px;
-      }
-      .wedge-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1px;
-        background: var(--hairline);
-        border: 1px solid var(--hairline);
-        border-radius: 20px;
-        overflow: hidden;
-      }
-      .wedge-grid > div { background: var(--ink-raised); padding: 22px 18px; }
-      .wedge-grid .head {
-        font-family: "New York", serif;
-        font-weight: 500;
-        font-size: 17px;
-        padding-top: 18px; padding-bottom: 14px;
-      }
-      .wedge-grid .head.us { color: var(--voltage); }
-      .wedge-grid .cell { font-size: 14px; color: var(--ash); line-height: 1.4; }
-      .wedge-grid .cell.us { color: var(--bone); font-weight: 500; }
-      @media (max-width: 720px) { .wedge-grid { grid-template-columns: 1fr; } }
+  /* Hamburger -> X morph */
+  .bar{ transition:transform .5s cubic-bezier(0.32,0.72,0,1), opacity .35s ease; transform-origin:center; }
+  .nav-open .bar-1{ transform:translateY(6px) rotate(45deg); }
+  .nav-open .bar-2{ opacity:0; transform:scaleX(0); }
+  .nav-open .bar-3{ transform:translateY(-6px) rotate(-45deg); }
 
-      .steps {
-        display: grid; grid-template-columns: repeat(3, 1fr);
-        gap: 14px; margin-top: 18px;
-      }
-      .step {
-        padding: 22px 20px;
-        border: 1px solid var(--hairline);
-        border-radius: 20px;
-        background: var(--ink-surface);
-      }
-      .step .num {
-        font-family: "New York", serif; font-style: italic;
-        font-size: 36px; color: var(--voltage);
-        line-height: 1; margin-bottom: 14px;
-      }
-      .step h3 {
-        font-family: "New York", serif; font-weight: 500;
-        font-size: 18px; margin: 0 0 6px;
-      }
-      .step p { margin: 0; font-size: 13px; color: var(--ash); line-height: 1.5; }
-      @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
+  /* Full-screen menu overlay */
+  .menu{ opacity:0; visibility:hidden; transition:opacity .6s cubic-bezier(0.22,1,0.36,1), visibility .6s; }
+  .menu.show{ opacity:1; visibility:visible; }
+  .menu li{ opacity:0; transform:translateY(48px); }
+  .menu.show li{ opacity:1; transform:none;
+    transition:opacity .8s cubic-bezier(0.22,1,0.36,1), transform .9s cubic-bezier(0.22,1,0.36,1); }
+  .menu.show li:nth-child(1){ transition-delay:.10s }
+  .menu.show li:nth-child(2){ transition-delay:.16s }
+  .menu.show li:nth-child(3){ transition-delay:.22s }
+  .menu.show li:nth-child(4){ transition-delay:.28s }
+  .menu.show li:nth-child(5){ transition-delay:.34s }
 
-      .cta-strip {
-        margin: 84px 0 0;
-        padding: 40px 32px;
-        border: 1px solid var(--hairline-strong);
-        border-radius: 28px;
-        background: var(--ink-surface);
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 28px; flex-wrap: wrap;
-      }
-      .cta-strip h3 {
-        font-family: "New York", serif; font-weight: 500;
-        font-size: clamp(22px, 3vw, 30px); margin: 0;
-      }
-      .cta-strip p { margin: 6px 0 0; font-size: 14px; color: var(--ash); }
+  /* Marquee */
+  @keyframes drift { from{ transform:translate3d(0,0,0) } to{ transform:translate3d(-50%,0,0) } }
+  .drift{ animation:drift 32s linear infinite; }
 
-      footer {
-        max-width: 1080px;
-        margin: 80px auto 0;
-        padding: 32px;
-        border-top: 1px solid var(--hairline);
-        display: flex; justify-content: space-between; align-items: center;
-        gap: 16px; flex-wrap: wrap;
-      }
-      footer .links { display: flex; gap: 22px; font-size: 12px; color: var(--ash); }
-      footer .links a { color: var(--ash); }
-      footer .small { font-size: 11px; color: var(--smoke); }
-    </style>
-  </head>
-  <body>
-    <header>
-      <div class="wordmark"><span class="vo">Vo</span><span class="cal">Cal</span></div>
-      <nav class="nav">
-        <a href="/beta/">TestFlight</a>
-        <a href="/privacy/">Privacy</a>
-        <a href="/support/">Support</a>
-        <a href="/beta/" class="cta">Get the beta →</a>
-      </nav>
-    </header>
+  /* Voice waveform — GPU-safe scaleY */
+  @keyframes vox { 0%,100%{ transform:scaleY(.18) } 50%{ transform:scaleY(1) } }
+  .vox span{
+    display:block; width:5px; height:56px; border-radius:99px;
+    background:#F6F4EC; transform:scaleY(.2); transform-origin:center;
+    animation:vox 1.25s cubic-bezier(0.22,1,0.36,1) infinite;
+  }
+  .vox span:nth-child(odd){ background:#E5FF59 }
 
-    <main>
-      <section class="hero">
-        <div class="eyebrow eyebrow-pulse">Introducing</div>
-        <h1>The first calorie tracker that <span class="accent">actually listens.</span></h1>
-        <p>
+  /* Accordion */
+  .faq-body{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .55s cubic-bezier(0.32,0.72,0,1); }
+  .faq.open .faq-body{ grid-template-rows:1fr; }
+  .faq-body > div{ overflow:hidden; }
+  .faq .plus{ transition:transform .5s cubic-bezier(0.32,0.72,0,1); }
+  .faq.open .plus{ transform:rotate(135deg); }
+
+  /* Soft halo behind hero copy */
+  .hero-copy{
+    text-shadow:
+      0 1px 2px rgba(10,10,11,0.96),
+      0 0 14px rgba(10,10,11,0.92),
+      0 2px 30px rgba(10,10,11,0.88);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .reveal,.reveal.in{ opacity:1!important; transform:none!important; filter:none!important; transition:none!important; }
+    .vox span, .drift{ animation:none!important; }
+  }
+</style>
+</head>
+
+<body class="grain font-sans text-bone antialiased overflow-x-hidden">
+
+  <!-- Soft ambient light field (fixed) -->
+  <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10">
+    <div class="absolute -top-40 left-1/2 h-[640px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(229,255,89,0.10),transparent)]"></div>
+    <div class="absolute top-[55%] -right-40 h-[560px] w-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(255,84,54,0.07),transparent)]"></div>
+  </div>
+
+  <!-- ============ FLOATING ISLAND NAV ============ -->
+  <header id="shell" class="fixed inset-x-0 top-0 z-50 flex justify-center px-4">
+    <nav class="mt-5 flex w-full max-w-[1180px] items-center justify-between gap-6 rounded-full border border-white/[0.06] bg-ink-raised/70 px-4 py-2.5 pl-6 shadow-float backdrop-blur-xl transition-all duration-700 ease-fluid">
+      <a href="#top" class="flex items-center gap-2.5">
+        <span class="grid h-8 w-8 place-items-center rounded-full bg-voltage text-ink">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 3v10"/><path d="M8 7a4 4 0 0 0 8 0"/><path d="M5 13a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        </span>
+        <span class="font-display text-[19px] font-semibold tracking-tight text-bone">VoCal</span>
+      </a>
+
+      <div class="hidden items-center gap-9 text-[14px] font-medium text-ash md:flex">
+        <a href="#features" class="transition-colors duration-300 ease-fluid hover:text-bone">Features</a>
+        <a href="#how" class="transition-colors duration-300 ease-fluid hover:text-bone">How it works</a>
+        <a href="#pricing" class="transition-colors duration-300 ease-fluid hover:text-bone">Pricing</a>
+        <a href="#faq" class="transition-colors duration-300 ease-fluid hover:text-bone">FAQ</a>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <a href="/beta/" class="group hidden items-center gap-3 rounded-full bg-voltage py-2 pl-5 pr-2 text-[14px] font-semibold text-ink transition-transform duration-500 ease-spring active:scale-[0.97] sm:flex">
+          Get the beta
+          <span class="grid h-7 w-7 place-items-center rounded-full bg-ink/15 transition-transform duration-500 ease-spring group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+          </span>
+        </a>
+        <button id="burger" aria-label="Open menu" class="grid h-10 w-10 place-items-center rounded-full border border-white/[0.06] bg-ink-raised/60 md:hidden">
+          <span class="relative block h-3 w-5">
+            <span class="bar bar-1 absolute left-0 top-0 block h-[2px] w-5 rounded bg-bone"></span>
+            <span class="bar bar-2 absolute left-0 top-[5px] block h-[2px] w-5 rounded bg-bone"></span>
+            <span class="bar bar-3 absolute left-0 top-[10px] block h-[2px] w-5 rounded bg-bone"></span>
+          </span>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Full-screen mobile menu -->
+  <div id="menu" class="menu fixed inset-0 z-40 bg-ink/95 backdrop-blur-3xl md:hidden">
+    <ul class="flex h-full flex-col justify-center gap-2 px-8 font-display text-5xl font-semibold tracking-tight">
+      <li><a href="#features" class="menu-link block py-2 text-bone">Features</a></li>
+      <li><a href="#how" class="menu-link block py-2 text-bone">How it works</a></li>
+      <li><a href="#pricing" class="menu-link block py-2 text-bone">Pricing</a></li>
+      <li><a href="#faq" class="menu-link block py-2 text-bone">FAQ</a></li>
+      <li class="pt-6"><a href="/beta/" class="menu-link inline-flex items-center gap-3 rounded-full bg-voltage px-7 py-4 text-lg text-ink">Get the beta
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg></a></li>
+    </ul>
+  </div>
+
+  <main id="top">
+
+    <!-- ============ HERO ============ -->
+    <section class="relative flex min-h-[100dvh] items-center overflow-hidden px-5 pb-24 pt-40 sm:px-8">
+      <div class="relative z-10 mx-auto flex w-full max-w-[1180px] flex-col items-center text-center">
+        <div class="reveal inline-flex w-max items-center gap-2 rounded-full border border-white/[0.07] bg-ink-raised/70 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-ash shadow-float">
+          <span class="h-1.5 w-1.5 rounded-full bg-voltage shadow-voltage"></span>
+          Voice-first nutrition · now in TestFlight
+        </div>
+
+        <h1 class="reveal hero-copy mt-7 max-w-[15ch] font-display text-[clamp(2.9rem,9vw,7.5rem)] font-semibold leading-[0.95] tracking-[-0.03em] text-bone">
+          Just say
+          <span class="font-serif italic font-medium text-voltage">what you ate.</span>
+        </h1>
+
+        <p class="reveal hero-copy mt-8 max-w-[44ch] text-[clamp(1.15rem,1.7vw,1.4rem)] font-medium leading-relaxed text-bone/85">
           Cal AI needs a photo. MyFitnessPal needs you to type. VoCal just needs you to talk —
           and it actually knows the McDonald's menu. Speak a meal, even from a chain, and it logs
           with real macros in seconds.
         </p>
-        <div class="actions">
-          <a class="cta" href="/beta/">Join the TestFlight →</a>
-          <a class="ghost" href="#how">How it works</a>
+
+        <div class="reveal mt-11 flex flex-wrap items-center justify-center gap-3">
+          <a href="/beta/" class="group flex items-center gap-3 rounded-full bg-voltage py-3 pl-7 pr-2.5 text-[15px] font-semibold text-ink shadow-voltage transition-transform duration-500 ease-spring active:scale-[0.98]">
+            Join the TestFlight
+            <span class="grid h-9 w-9 place-items-center rounded-full bg-ink/15 transition-transform duration-500 ease-spring group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+            </span>
+          </a>
+          <a href="#how" class="flex items-center gap-2.5 rounded-full border border-white/[0.08] bg-ink-raised/60 px-6 py-3 text-[15px] font-medium text-bone shadow-float transition-colors duration-500 ease-fluid hover:bg-ink-surf">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"/></svg>
+            See it work
+          </a>
         </div>
 
-        <div class="examples">
-          <div class="example">"medium fry from McDonald's"</div>
-          <div class="example">"grande iced oat latte from Starbucks"</div>
-          <div class="example">"Chipotle bowl, double chicken, guac"</div>
-        </div>
-      </section>
-
-      <section class="wedge">
-        <div class="eyebrow">The wedge</div>
-        <h2>What no one else does.</h2>
-        <div class="wedge-grid">
-          <div class="head">Cal AI</div>
-          <div class="head">MyFitnessPal</div>
-          <div class="head us">VoCal</div>
-
-          <div class="cell">Photo only</div>
-          <div class="cell">Type & scroll</div>
-          <div class="cell us">Speak it — logged in under 3 seconds</div>
-
-          <div class="cell">No restaurant intelligence</div>
-          <div class="cell">Search a database</div>
-          <div class="cell us">Agentic search across chain menus + USDA</div>
-
-          <div class="cell">Can't see hidden food</div>
-          <div class="cell">No automation</div>
-          <div class="cell us">Photo + voice fact-check: "rice underneath?"</div>
-
-          <div class="cell">No coach</div>
-          <div class="cell">Charts only</div>
-          <div class="cell us">Voice nutrition coach you can talk to</div>
-        </div>
-      </section>
-
-      <section id="how">
-        <div class="eyebrow">How it works</div>
-        <h2>Three steps. No typing.</h2>
-        <div class="steps">
-          <div class="step">
-            <div class="num">01</div>
-            <h3>Tap the mic</h3>
-            <p>Say what you ate the way you'd tell a friend. "Medium fry from McDonald's." "Pasta with red sauce, big bowl."</p>
-          </div>
-          <div class="step">
-            <div class="num">02</div>
-            <h3>We resolve it</h3>
-            <p>Agentic search hits the chain menus first, USDA for plain food, web + PDFs for everything else. Real macros, not guesses.</p>
-          </div>
-          <div class="step">
-            <div class="num">03</div>
-            <h3>Logged in seconds</h3>
-            <p>Calorie ring updates, macros tick up, Apple Health syncs. Ask the coach what to eat next.</p>
+        <!-- Double-bezel "live capture" card -->
+        <div class="reveal mt-16 w-full">
+          <div class="rounded-[2.25rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-floatl backdrop-blur-0">
+            <div class="rounded-[calc(2.25rem-0.5rem)] bg-ink-raised shadow-inset">
+              <div class="flex flex-col items-center gap-7 px-6 py-10 sm:flex-row sm:px-12 sm:py-12">
+                <div class="vox flex h-20 items-center gap-1.5" aria-hidden="true">
+                  <span style="animation-delay:-.9s"></span><span style="animation-delay:-.2s"></span><span style="animation-delay:-.7s"></span><span style="animation-delay:-.35s"></span><span style="animation-delay:-.55s"></span><span style="animation-delay:-.1s"></span><span style="animation-delay:-.8s"></span><span style="animation-delay:-.45s"></span><span style="animation-delay:-.65s"></span><span style="animation-delay:-.25s"></span>
+                </div>
+                <div class="flex-1 text-center sm:text-left">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-voltage">Heard at the mic</p>
+                  <p class="mt-2 font-serif italic text-2xl font-medium leading-tight tracking-tight text-bone sm:text-3xl">“Chipotle bowl, double chicken, brown rice, black beans, guac.”</p>
+                </div>
+                <div class="grid shrink-0 grid-cols-3 gap-3 sm:gap-4">
+                  <div class="rounded-2xl bg-ink-surf px-4 py-3 text-center"><p class="font-display text-xl font-semibold text-bone">930</p><p class="text-[11px] tracking-wide text-ash">kcal</p></div>
+                  <div class="rounded-2xl bg-ink-surf px-4 py-3 text-center"><p class="font-display text-xl font-semibold text-bone">73g</p><p class="text-[11px] tracking-wide text-ash">protein</p></div>
+                  <div class="rounded-2xl bg-voltage/15 ring-1 ring-voltage/30 px-4 py-3 text-center"><p class="font-display text-xl font-semibold text-voltage">61ms</p><p class="text-[11px] tracking-wide text-voltage/80">cache hit</p></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
 
-      <section class="cta-strip">
-        <div>
-          <h3>Just say what you ate.</h3>
-          <p>Join the TestFlight beta. iPhone, iOS 18+.</p>
+      </div>
+    </section>
+
+    <!-- ============ TRUST MARQUEE ============ -->
+    <section class="reveal overflow-hidden py-10">
+      <div class="mx-auto mb-8 max-w-[1180px] px-5 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-smoke sm:px-8">Resolution paths VoCal knows by name</div>
+      <div class="relative flex w-full overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
+        <div class="drift flex shrink-0 items-center gap-14 pr-14 font-display text-2xl font-medium text-ash/55">
+          <span>McDonald's</span><span class="text-voltage">·</span>
+          <span>Starbucks</span><span class="text-voltage">·</span>
+          <span>Chipotle</span><span class="text-voltage">·</span>
+          <span>Chick-fil-A</span><span class="text-voltage">·</span>
+          <span>Burger King</span><span class="text-voltage">·</span>
+          <span>Subway</span><span class="text-voltage">·</span>
+          <span>Taco Bell</span><span class="text-voltage">·</span>
+          <span>USDA FoodData Central</span><span class="text-voltage">·</span>
+          <span>McDonald's</span><span class="text-voltage">·</span>
+          <span>Starbucks</span><span class="text-voltage">·</span>
+          <span>Chipotle</span><span class="text-voltage">·</span>
+          <span>Chick-fil-A</span><span class="text-voltage">·</span>
+          <span>Burger King</span><span class="text-voltage">·</span>
+          <span>Subway</span><span class="text-voltage">·</span>
+          <span>Taco Bell</span><span class="text-voltage">·</span>
+          <span>USDA FoodData Central</span><span class="text-voltage">·</span>
         </div>
-        <a class="cta" href="/beta/">Get the beta →</a>
-      </section>
-    </main>
+      </div>
+    </section>
 
-    <footer>
+    <!-- ============ BENTO FEATURES ============ -->
+    <section id="features" class="mx-auto max-w-[1180px] px-5 py-24 sm:px-8 sm:py-36">
+      <div class="reveal max-w-[44ch]">
+        <p class="inline-flex w-max items-center gap-2 rounded-full border border-white/[0.07] bg-ink-raised/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ash">Why VoCal</p>
+        <h2 class="mt-6 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-semibold leading-[1.02] tracking-[-0.03em] text-bone">
+          More accurate than a photo. <span class="font-serif italic text-voltage">Faster than typing.</span>
+        </h2>
+      </div>
+
+      <div class="mt-14 grid grid-cols-1 gap-5 md:grid-cols-12">
+
+        <!-- A — tall hero feature: voice -->
+        <article class="reveal group md:col-span-7 md:row-span-2">
+          <div class="h-full rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+            <div class="flex h-full flex-col justify-between rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset sm:p-11">
+              <div>
+                <span class="grid h-12 w-12 place-items-center rounded-2xl bg-voltage/15 text-voltage">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                </span>
+                <h3 class="mt-8 font-display text-3xl font-semibold tracking-tight text-bone sm:text-4xl">Talk like you would to a friend.</h3>
+                <p class="mt-4 max-w-[44ch] leading-relaxed text-ash">"Medium fry from McDonald's." "Chipotle bowl, double chicken." On-device speech recognition transcribes in real time. The chain canon resolves named menu items in under 100&nbsp;ms. Everything else hits Wafer + OpenRouter LLM with USDA-grounded macros.</p>
+              </div>
+              <div class="mt-10 rounded-2xl bg-ink-surf p-5">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-voltage">Tier-0 cache hit</p>
+                <p class="mt-2 font-serif italic text-lg font-medium leading-snug text-bone">"Slice of pepperoni pizza" → 298 kcal · 13g protein · 34g carbs · 13g fat.</p>
+                <div class="mt-4 flex flex-wrap gap-2 text-[12px] font-medium text-ash">
+                  <span class="rounded-full bg-ink-raised px-3 py-1">~100 foods on-device</span>
+                  <span class="rounded-full bg-ink-raised px-3 py-1">~30 chains in canon</span>
+                  <span class="rounded-full bg-voltage/15 px-3 py-1 text-voltage">GLM-5.1 fallback</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- B -->
+        <article class="reveal md:col-span-5">
+          <div class="h-full rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+            <div class="h-full rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset">
+              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-ink-surf text-bone">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+              </span>
+              <h3 class="mt-7 font-display text-2xl font-semibold tracking-tight text-bone">Real chain nutrition, not a guess</h3>
+              <p class="mt-3 leading-relaxed text-ash">A Whopper from MyFitnessPal is a generic 240 kcal patty. From VoCal it's the actual Burger King Whopper: 670 kcal, 28g protein, 49g carbs, 40g fat.</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- C — dark accent -->
+        <article class="reveal md:col-span-5">
+          <div class="h-full rounded-[2rem] border border-voltage/15 bg-voltage/[0.04] p-2 shadow-float">
+            <div class="h-full rounded-[calc(2rem-0.5rem)] bg-ink p-8 text-bone shadow-inset">
+              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-voltage/10 text-voltage">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a4 4 0 0 1 4 4 4 4 0 0 1 0 8 4 4 0 0 1-8 0 4 4 0 0 1 0-8 4 4 0 0 1 4-4Z"/><path d="M12 7v10"/></svg>
+              </span>
+              <h3 class="mt-7 font-display text-2xl font-semibold tracking-tight">A coach that reads your day</h3>
+              <p class="mt-3 leading-relaxed text-ash">"How do I hit 180g of protein today?" Coach pulls your real day's log from D1 and replies with a Cava bowl that closes the gap. Not generic advice — chain-aware, kcal-aware.</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- D -->
+        <article class="reveal md:col-span-4">
+          <div class="h-full rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+            <div class="h-full rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset">
+              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-voltage/15 text-voltage">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+              </span>
+              <h3 class="mt-7 font-display text-xl font-semibold tracking-tight text-bone">Asks one follow-up</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-ash">"Single scoop of guac?" One targeted question is the difference between a 700-kcal guess and a 930-kcal correct answer.</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- E -->
+        <article class="reveal md:col-span-4">
+          <div class="h-full rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+            <div class="h-full rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset">
+              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-ink-surf text-bone">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              </span>
+              <h3 class="mt-7 font-display text-xl font-semibold tracking-tight text-bone">Apple Health, automatic</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-ash">Every saved meal writes dietary energy, protein, carbs, fat to HealthKit. Body fat % too, when you log a body scan.</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- F -->
+        <article class="reveal md:col-span-4">
+          <div class="h-full rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+            <div class="h-full rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset">
+              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-voltage/15 text-voltage">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="18" rx="2.5"/><path d="M11 6h2"/></svg>
+              </span>
+              <h3 class="mt-7 font-display text-xl font-semibold tracking-tight text-bone">Hey Siri, log a meal</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-ash">App Intents for Log meal · Get daily macros · Open the mic. Works from Spotlight, Action Button, and Apple Watch.</p>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS — EDITORIAL ============ -->
+    <section id="how" class="mx-auto max-w-[1180px] px-5 py-24 sm:px-8 sm:py-36">
+      <div class="grid gap-14 md:grid-cols-12">
+        <div class="reveal md:col-span-5">
+          <p class="inline-flex w-max items-center gap-2 rounded-full border border-white/[0.07] bg-ink-raised/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ash">Three seconds</p>
+          <h2 class="mt-6 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-semibold leading-[1.02] tracking-[-0.03em] text-bone">
+            From plate <span class="font-serif italic text-voltage">to log.</span>
+          </h2>
+          <p class="mt-5 max-w-[36ch] leading-relaxed text-ash">Three-tier resolution. Most of your queries never leave the device. The hard ones get the LLM. Either way you get real macros, not a guess.</p>
+        </div>
+
+        <div class="reveal md:col-span-7">
+          <ol class="flex flex-col gap-4">
+            <li class="rounded-[1.75rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+              <div class="flex items-start gap-6 rounded-[calc(1.75rem-0.375rem)] bg-ink-raised p-7 shadow-inset">
+                <span class="font-display text-3xl font-semibold text-ash/40">01</span>
+                <div><h3 class="font-display text-xl font-semibold tracking-tight text-bone">Tap the mic</h3><p class="mt-1.5 leading-relaxed text-ash">On-device <em class="font-serif">SFSpeechRecognizer</em>. The transcript appears live as you speak. No network round-trip for the recognition.</p></div>
+              </div>
+            </li>
+            <li class="rounded-[1.75rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+              <div class="flex items-start gap-6 rounded-[calc(1.75rem-0.375rem)] bg-ink-raised p-7 shadow-inset">
+                <span class="font-display text-3xl font-semibold text-ash/40">02</span>
+                <div><h3 class="font-display text-xl font-semibold tracking-tight text-bone">We resolve it in three tiers</h3><p class="mt-1.5 leading-relaxed text-ash">Tier-0 on-device canon (&lt;50ms for ~100 common foods). Tier-1 backend chain canon (~100ms for ~30 chains). Tier-2 Wafer GLM-5.1 + USDA fallback (3-7s for anything else).</p></div>
+              </div>
+            </li>
+            <li class="rounded-[1.75rem] border border-voltage/15 bg-voltage/[0.04] p-1.5 shadow-float">
+              <div class="flex items-start gap-6 rounded-[calc(1.75rem-0.375rem)] bg-ink p-7 text-bone shadow-inset">
+                <span class="font-display text-3xl font-semibold text-voltage/45">03</span>
+                <div><h3 class="font-display text-xl font-semibold tracking-tight">Logged. Synced. Done.</h3><p class="mt-1.5 leading-relaxed text-ash">Calorie ring updates, macros tick up, Apple Health gets the sample, Siri can read it back. The Coach reads your day's log when you ask what to eat next.</p></div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ EDITORIAL TESTIMONIAL ============ -->
+    <section class="mx-auto max-w-[1180px] px-5 py-24 sm:px-8 sm:py-32">
+      <div class="reveal rounded-[2.5rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-floatl">
+        <div class="rounded-[calc(2.5rem-0.5rem)] bg-ink-raised px-8 py-16 text-center shadow-inset sm:px-16 sm:py-24">
+          <svg class="mx-auto mb-8 text-voltage" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M7 7h4v6c0 2-1.5 4-4 4M14 7h4v6c0 2-1.5 4-4 4"/></svg>
+          <p class="mx-auto max-w-[24ch] font-serif italic text-[clamp(1.7rem,4vw,3rem)] font-medium leading-[1.15] tracking-[-0.01em] text-bone">I've abandoned every calorie tracker in a week. VoCal is the first one where logging a Chipotle bowl is faster than ordering it.</p>
+          <div class="mt-10 flex items-center justify-center gap-4">
+            <span class="grid h-11 w-11 place-items-center rounded-full bg-voltage/15 font-display font-semibold text-voltage">EA</span>
+            <div class="text-left"><p class="font-medium text-bone">Erin Aoki</p><p class="text-[14px] text-ash">Strength athlete · TestFlight beta</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRICING ============ -->
+    <section id="pricing" class="mx-auto max-w-[1180px] px-5 py-24 sm:px-8 sm:py-36">
+      <div class="reveal mx-auto max-w-[40ch] text-center">
+        <p class="inline-flex w-max items-center gap-2 rounded-full border border-white/[0.07] bg-ink-raised/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ash">Pricing</p>
+        <h2 class="mt-6 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-semibold leading-[1.02] tracking-[-0.03em] text-bone">
+          Free to start. <span class="font-serif italic text-voltage">Honest at the top.</span>
+        </h2>
+      </div>
+
+      <div class="mt-14 grid gap-5 md:grid-cols-3">
+        <div class="reveal rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+          <div class="flex h-full flex-col rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset">
+            <p class="font-display text-lg font-semibold text-bone">Free</p>
+            <p class="mt-3 font-display text-5xl font-semibold tracking-tight text-bone">$0</p>
+            <p class="mt-2 text-[14px] text-ash">3 voice logs / day, chain canon, on-device food cache, Apple Health sync, 7-day history.</p>
+            <a href="/beta/" class="mt-8 flex items-center justify-center gap-2 rounded-full border border-white/[0.1] bg-ink-surf py-3 text-[14px] font-medium text-bone transition-colors duration-500 ease-fluid hover:bg-ink">Start free</a>
+          </div>
+        </div>
+
+        <div class="reveal rounded-[2rem] border border-voltage/25 bg-voltage/[0.06] p-2 shadow-floatl">
+          <div class="flex h-full flex-col rounded-[calc(2rem-0.5rem)] bg-ink p-8 text-bone shadow-inset">
+            <div class="flex items-center justify-between">
+              <p class="font-display text-lg font-semibold">VoCal Pro</p>
+              <span class="rounded-full bg-voltage/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-voltage">7-day free trial</span>
+            </div>
+            <p class="mt-3 font-display text-5xl font-semibold tracking-tight">$4.99<span class="text-xl text-ash">/mo</span></p>
+            <p class="mt-2 text-[14px] text-ash">Unlimited voice logs, LLM-backed parsing, photo fact-check, BF% from selfies, voice coach, Apple Watch + Live Activity, full export.</p>
+            <a href="/beta/" class="group mt-8 flex items-center justify-center gap-3 rounded-full bg-voltage py-3 pl-5 pr-2.5 text-[14px] font-semibold text-ink transition-transform duration-500 ease-spring active:scale-[0.98]">
+              Start 7-day trial
+              <span class="grid h-7 w-7 place-items-center rounded-full bg-ink/15 transition-transform duration-500 ease-spring group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+              </span>
+            </a>
+          </div>
+        </div>
+
+        <div class="reveal rounded-[2rem] border border-white/[0.05] bg-white/[0.02] p-2 shadow-float">
+          <div class="flex h-full flex-col rounded-[calc(2rem-0.5rem)] bg-ink-raised p-8 shadow-inset">
+            <p class="font-display text-lg font-semibold text-bone">Annual</p>
+            <p class="mt-3 font-display text-5xl font-semibold tracking-tight text-bone">$39.99<span class="text-xl text-ash">/yr</span></p>
+            <p class="mt-2 text-[14px] text-ash">Everything in Pro, 33% off the monthly. Cancel anytime. Save your data forever.</p>
+            <a href="/beta/" class="mt-8 flex items-center justify-center gap-2 rounded-full border border-white/[0.1] bg-ink-surf py-3 text-[14px] font-medium text-bone transition-colors duration-500 ease-fluid hover:bg-ink">Go annual</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section id="faq" class="mx-auto max-w-[860px] px-5 py-24 sm:px-8 sm:py-36">
+      <div class="reveal text-center">
+        <p class="inline-flex w-max items-center gap-2 rounded-full border border-white/[0.07] bg-ink-raised/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-ash">Questions</p>
+        <h2 class="mt-6 font-display text-[clamp(2rem,5vw,3.4rem)] font-semibold leading-[1.05] tracking-[-0.03em] text-bone">
+          The things <span class="font-serif italic text-voltage">people ask.</span>
+        </h2>
+      </div>
+
+      <div class="reveal mt-12 flex flex-col gap-3">
+        <div class="faq rounded-[1.5rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+          <div class="rounded-[calc(1.5rem-0.375rem)] bg-ink-raised shadow-inset">
+            <button class="faq-trigger flex w-full items-center justify-between gap-6 px-7 py-6 text-left">
+              <span class="font-display text-lg font-medium tracking-tight text-bone">How is this different from Cal AI or MyFitnessPal?</span>
+              <span class="plus grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink-surf text-bone"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-body"><div><p class="px-7 pb-7 leading-relaxed text-ash">Cal AI needs you to take a photo. MyFitnessPal needs you to type and scroll. VoCal just needs you to speak. And VoCal actually knows the McDonald's, Starbucks, Chipotle, Chick-fil-A, Burger King, Subway, and Taco Bell menus by exact item — so "medium fry from McDonald's" resolves to the real 320 kcal, not a generic guess.</p></div></div>
+          </div>
+        </div>
+
+        <div class="faq rounded-[1.5rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+          <div class="rounded-[calc(1.5rem-0.375rem)] bg-ink-raised shadow-inset">
+            <button class="faq-trigger flex w-full items-center justify-between gap-6 px-7 py-6 text-left">
+              <span class="font-display text-lg font-medium tracking-tight text-bone">Does it work offline?</span>
+              <span class="plus grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink-surf text-bone"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-body"><div><p class="px-7 pb-7 leading-relaxed text-ash">Yes for the common path. Speech recognition runs entirely on-device. The Tier-0 food canon (~100 most common foods) is bundled with the app — apple, banana, 8 oz chicken breast, slice of pizza all resolve with zero network. Chain queries and rare foods need a connection; if you're offline, an editorial fallback covers the killer demo phrases.</p></div></div>
+          </div>
+        </div>
+
+        <div class="faq rounded-[1.5rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+          <div class="rounded-[calc(1.5rem-0.375rem)] bg-ink-raised shadow-inset">
+            <button class="faq-trigger flex w-full items-center justify-between gap-6 px-7 py-6 text-left">
+              <span class="font-display text-lg font-medium tracking-tight text-bone">What happens to my voice recordings?</span>
+              <span class="plus grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink-surf text-bone"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-body"><div><p class="px-7 pb-7 leading-relaxed text-ash">Audio is transcribed on-device via Apple's Speech framework and discarded immediately. Only the resulting transcript (e.g. "medium fry from McDonald's") leaves the device, and only when our chain canon or on-device cache misses. No audio is ever stored or used for advertising.</p></div></div>
+          </div>
+        </div>
+
+        <div class="faq rounded-[1.5rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+          <div class="rounded-[calc(1.5rem-0.375rem)] bg-ink-raised shadow-inset">
+            <button class="faq-trigger flex w-full items-center justify-between gap-6 px-7 py-6 text-left">
+              <span class="font-display text-lg font-medium tracking-tight text-bone">Does it sync with Apple Health?</span>
+              <span class="plus grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink-surf text-bone"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-body"><div><p class="px-7 pb-7 leading-relaxed text-ash">Every saved meal writes dietary energy, protein, carbs, and fat to HealthKit as a sample tagged "VoCal." Body fat % and body mass too, when you complete a body scan. You can mirror those into Apple Watch fitness rings, share with your doctor's app, or export the lot.</p></div></div>
+          </div>
+        </div>
+
+        <div class="faq rounded-[1.5rem] border border-white/[0.05] bg-white/[0.02] p-1.5 shadow-float">
+          <div class="rounded-[calc(1.5rem-0.375rem)] bg-ink-raised shadow-inset">
+            <button class="faq-trigger flex w-full items-center justify-between gap-6 px-7 py-6 text-left">
+              <span class="font-display text-lg font-medium tracking-tight text-bone">Which LLM is doing the parsing?</span>
+              <span class="plus grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink-surf text-bone"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-body"><div><p class="px-7 pb-7 leading-relaxed text-ash">When the on-device cache and backend chain canon both miss, the request goes to Wafer Pass (GLM-5.1, JSON-mode, temp 0.1). OpenRouter (GPT-4o-mini) is the fallback if Wafer is down. USDA FoodData Central is the last structured fallback before a clearly-flagged generic estimate.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FINAL CTA ============ -->
+    <section id="cta" class="mx-auto max-w-[1180px] px-5 pb-28 sm:px-8">
+      <div class="reveal rounded-[2.75rem] border border-white/[0.06] bg-white/[0.02] p-2 shadow-floatl">
+        <div class="relative overflow-hidden rounded-[calc(2.75rem-0.5rem)] bg-ink-raised px-8 py-20 text-center text-bone shadow-inset sm:px-16 sm:py-28">
+          <div aria-hidden="true" class="pointer-events-none absolute -top-32 left-1/2 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(229,255,89,0.35),transparent)]"></div>
+          <div class="relative">
+            <h2 class="mx-auto max-w-[16ch] font-display text-[clamp(2.2rem,6vw,4.6rem)] font-semibold leading-[1.0] tracking-[-0.03em]">
+              Stop typing. <span class="font-serif italic text-voltage">Start talking.</span>
+            </h2>
+            <p class="mx-auto mt-6 max-w-[42ch] leading-relaxed text-ash">Free on iOS. Speak a meal — even from a chain — and it logs with real macros in seconds. First 500 TestFlight users get three months Pro free.</p>
+            <div class="mt-11 flex flex-wrap justify-center gap-3">
+              <a href="/beta/" class="group flex items-center gap-3 rounded-full bg-voltage py-3.5 pl-7 pr-2.5 text-[15px] font-semibold text-ink shadow-voltage transition-transform duration-500 ease-spring active:scale-[0.98]">
+                Join the TestFlight
+                <span class="grid h-9 w-9 place-items-center rounded-full bg-ink/15 transition-transform duration-500 ease-spring group-hover:translate-x-0.5 group-hover:-translate-y-px group-hover:scale-105">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                </span>
+              </a>
+              <a href="#how" class="rounded-full border border-white/15 px-7 py-3.5 text-[15px] font-medium text-bone transition-colors duration-500 ease-fluid hover:bg-white/5">See how it works</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="mx-auto max-w-[1180px] px-5 pb-14 sm:px-8">
+    <div class="flex flex-col gap-10 border-t border-white/[0.08] pt-12 md:flex-row md:items-end md:justify-between">
       <div>
-        <div class="wordmark"><span class="vo">Vo</span><span class="cal">Cal</span></div>
-        <div class="small">© 2026 VoCal. Not a medical device.</div>
+        <a href="#top" class="flex items-center gap-2.5">
+          <span class="grid h-8 w-8 place-items-center rounded-full bg-voltage text-ink">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 3v10"/><path d="M8 7a4 4 0 0 0 8 0"/><path d="M5 13a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+          </span>
+          <span class="font-display text-[19px] font-semibold tracking-tight text-bone">VoCal</span>
+        </a>
+        <p class="mt-4 max-w-[36ch] text-[14px] leading-relaxed text-ash">Voice-first nutrition. Speak the meal, even from a chain — it logs with real macros in seconds.</p>
       </div>
-      <div class="links">
-        <a href="/terms/">Terms</a>
-        <a href="/privacy/">Privacy</a>
-        <a href="/support/">Support</a>
-        <a href="/beta/">Beta</a>
+      <div class="flex flex-wrap gap-x-12 gap-y-6 text-[14px] text-ash">
+        <div class="flex flex-col gap-3"><span class="text-[11px] font-semibold uppercase tracking-[0.2em] text-bone">Product</span><a href="#features" class="transition-colors duration-300 ease-fluid hover:text-bone">Features</a><a href="#pricing" class="transition-colors duration-300 ease-fluid hover:text-bone">Pricing</a><a href="#how" class="transition-colors duration-300 ease-fluid hover:text-bone">How it works</a></div>
+        <div class="flex flex-col gap-3"><span class="text-[11px] font-semibold uppercase tracking-[0.2em] text-bone">Company</span><a href="/beta/" class="transition-colors duration-300 ease-fluid hover:text-bone">TestFlight</a><a href="/privacy/" class="transition-colors duration-300 ease-fluid hover:text-bone">Privacy</a><a href="/support/" class="transition-colors duration-300 ease-fluid hover:text-bone">Support</a><a href="/terms/" class="transition-colors duration-300 ease-fluid hover:text-bone">Terms</a></div>
       </div>
-    </footer>
-  </body>
+    </div>
+    <p class="mt-10 text-[13px] text-smoke">© 2026 VoCal. Not a medical device. Built quietly.</p>
+  </footer>
+
+<script>
+  // ---- Floating Island nav: condense on scroll ----
+  const nav = document.querySelector('#shell nav');
+  let ticking = false;
+  function onScroll(){
+    const y = window.scrollY;
+    nav.classList.toggle('max-w-[980px]', y > 40);
+    nav.classList.toggle('shadow-floatl', y > 40);
+    ticking = false;
+  }
+  window.addEventListener('scroll', () => { if(!ticking){ requestAnimationFrame(onScroll); ticking = true; } }, { passive:true });
+
+  // ---- Hamburger morph + full-screen menu ----
+  const burger = document.getElementById('burger');
+  const menu = document.getElementById('menu');
+  const setMenu = (open) => {
+    burger.classList.toggle('nav-open', open);
+    menu.classList.toggle('show', open);
+    burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    document.body.style.overflow = open ? 'hidden' : '';
+  };
+  burger.addEventListener('click', () => setMenu(!menu.classList.contains('show')));
+  document.querySelectorAll('.menu-link').forEach(a => a.addEventListener('click', () => setMenu(false)));
+  window.addEventListener('keydown', e => { if(e.key === 'Escape') setMenu(false); });
+
+  // ---- Scroll-reveal via IntersectionObserver ----
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if(entry.isIntersecting){
+        const delay = entry.target.dataset.d ? +entry.target.dataset.d : Math.min(i * 70, 280);
+        setTimeout(() => entry.target.classList.add('in'), delay);
+        io.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+
+  document.querySelectorAll('.reveal').forEach((el, i) => {
+    el.dataset.d = (i % 4) * 80;
+    io.observe(el);
+  });
+
+  // ---- FAQ accordion (single-open) ----
+  document.querySelectorAll('.faq-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.faq');
+      const isOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq').forEach(f => f.classList.remove('open'));
+      if(!isOpen) item.classList.add('open');
+    });
+  });
+</script>
+</body>
 </html>

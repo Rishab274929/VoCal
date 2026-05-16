@@ -1,0 +1,3 @@
+[submodule "sotto"]
+	path = sotto
+	url = https://github.com/arjunsrivastava-ai/sotto.git
