@@ -9,9 +9,14 @@
 // /api/auth/anonymous.
 
 import { signJWT } from "../../../src/lib/jwt";
+import { mergeAnonymousData } from "../../../src/lib/identityMerge";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 interface GoogleAuthBody {
   id_token?: string;
+  /** Optional: hand off an anonymous session's rows to this new identity. */
+  link_anonymous_user_id?: string;
+  link_anonymous_token?: string;
 }
 
 interface GoogleTokenInfo {
@@ -50,6 +55,7 @@ interface Env {
   GOOGLE_CLIENT_ID_IOS?: string;
   GOOGLE_CLIENT_ID_ANDROID?: string;
   GOOGLE_CLIENT_ID_WEB?: string;
+  FOOD_KV?: KVNamespace;
 }
 
 export const onRequestOptions = async (): Promise<Response> => {
@@ -57,6 +63,11 @@ export const onRequestOptions = async (): Promise<Response> => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Rate limit auth endpoints by IP (the request isn't authenticated yet).
+  // 20/min/IP is generous enough that a real user retrying a failed flow
+  // never hits it; tight enough to block credential-stuffing volume.
+  const rl = await checkRateLimit(env, request, "auth/google", 20);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS);
   let body: GoogleAuthBody;
   try {
     body = (await request.json()) as GoogleAuthBody;
@@ -170,6 +181,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     expiresAt
   );
 
+  // --- Optional anonymous-data merge --------------------------------------
+  // Mirrors /api/auth/apple. We do this AFTER the upsert so the meals/body_metrics
+  // FKs point at a row that actually exists.
+  let mergedRows = 0;
+  let mergeErrors: string[] = [];
+  if (body.link_anonymous_user_id && body.link_anonymous_token) {
+    const merge = await mergeAnonymousData(
+      { DB: env.DB, JWT_SECRET: env.JWT_SECRET },
+      body.link_anonymous_user_id,
+      body.link_anonymous_token,
+      userId
+    );
+    mergedRows = merge.merged;
+    mergeErrors = merge.errors;
+    console.log("[merge] anon=%s -> new=%s rows=%d errors=%s",
+      body.link_anonymous_user_id, userId, merge.merged, merge.errors.join(";") || "none");
+  }
+
   return json({
     user_id: userId,
     token,
@@ -177,6 +206,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     email: info.email,
     name: info.name,
     picture: info.picture,
-    is_new_user: isNewUser
+    is_new_user: isNewUser,
+    merged_rows: mergedRows,
+    ...(mergeErrors.length ? { merge_errors: mergeErrors } : {})
   });
 };

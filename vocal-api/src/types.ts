@@ -47,6 +47,11 @@ export interface Env {
   GOOGLE_CLIENT_ID_IOS?: string;
   GOOGLE_CLIENT_ID_ANDROID?: string;
   GOOGLE_CLIENT_ID_WEB?: string;
+  // Sign in with Apple — REQUIRED if /api/auth/apple is exposed. The bundle
+  // ID is the iOS app's `aud` claim; APPLE_AUDIENCES is an optional CSV of
+  // extra audiences (e.g. a Services ID for Apple sign-in on the web).
+  APPLE_BUNDLE_ID?: string;
+  APPLE_AUDIENCES?: string;
   FOOD_KV?: KVNamespace;
   DB?: D1Database;
 }

@@ -16,6 +16,10 @@ pages_build_output_dir = "vocal-web/dist"
 #   - GOOGLE_CLIENT_ID_IOS        (Secret) — at least one required for /api/auth/google
 #   - GOOGLE_CLIENT_ID_ANDROID    (Secret)
 #   - GOOGLE_CLIENT_ID_WEB        (Secret)
+#   - APPLE_BUNDLE_ID             (Secret) — REQUIRED for /api/auth/apple; iOS bundle ID
+#                                 used as the `aud` claim on Apple's identity_token
+#   - APPLE_AUDIENCES             (Secret, optional) — CSV of extra audiences
+#                                 (e.g. a Services ID for Sign in with Apple JS)
 #
 # Other infra:
 #   - USDA_FDC_API_KEY            (Secret, optional) — FDC lookups + barcode resolution

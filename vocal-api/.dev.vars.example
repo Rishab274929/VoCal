@@ -19,6 +19,13 @@ JWT_SECRET=
 GOOGLE_CLIENT_ID_IOS=
 GOOGLE_CLIENT_ID_ANDROID=
 GOOGLE_CLIENT_ID_WEB=
+# REQUIRED for /api/auth/apple — the iOS bundle ID that signs in with Apple.
+# Apple's identity_token's `aud` claim must equal this; without it we'd
+# accept any Apple-issued token for any app, which is a critical bypass.
+APPLE_BUNDLE_ID=
+# Optional CSV of additional accepted audiences (e.g. a Services ID for
+# Sign in with Apple JS on the web).
+APPLE_AUDIENCES=
 
 # --- Other ---
 USDA_FDC_API_KEY=

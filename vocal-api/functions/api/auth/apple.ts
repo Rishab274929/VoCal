@@ -1,0 +1,334 @@
+// POST /api/auth/apple — Sign in with Apple.
+//
+// Mirrors /api/auth/google in shape, but verifies an Apple identity token
+// (a JWT signed by Apple) using their JWKS endpoint. The JWT signature must
+// be checked with the correct public key (matched by `kid` in the header)
+// because Apple does NOT offer a tokeninfo endpoint like Google.
+//
+// Body: {
+//   identity_token: string,        // REQUIRED — the JWT from ASAuthorization
+//   authorization_code?: string,   // optional; we don't use it server-side
+//                                  // (would let us hit Apple's token endpoint,
+//                                  // but the identity_token alone is sufficient
+//                                  // for sign-in)
+//   user_id?: string,              // Apple's sub, supplied by iOS for cross-check
+//   full_name?: { given?, family? }, // ONLY sent on first sign-in by iOS
+//   email?: string,                // ONLY sent on first sign-in by iOS
+//   link_anonymous_user_id?: string,
+//   link_anonymous_token?: string
+// }
+// Returns: { user_id, token, expires_at, email?, name?, is_new_user, merged_rows? }
+
+import { signJWT } from "../../../src/lib/jwt";
+import { mergeAnonymousData } from "../../../src/lib/identityMerge";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
+
+interface AppleAuthBody {
+  identity_token?: string;
+  authorization_code?: string;
+  user_id?: string;
+  full_name?: { given?: string; family?: string };
+  email?: string;
+  link_anonymous_user_id?: string;
+  link_anonymous_token?: string;
+}
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization"
+};
+
+const APPLE_ISSUER = "https://appleid.apple.com";
+const APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys";
+
+const json = (data: unknown, status = 200): Response =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS }
+  });
+
+interface Env {
+  DB?: D1Database;
+  JWT_SECRET?: string;
+  APPLE_BUNDLE_ID?: string;
+  /** Comma-separated list of additional accepted audiences (e.g. service IDs
+   *  for Sign in with Apple JS on web). Optional. */
+  APPLE_AUDIENCES?: string;
+  FOOD_KV?: KVNamespace;
+}
+
+interface AppleJWTHeader { alg?: string; kid?: string; typ?: string; }
+interface AppleJWTPayload {
+  iss?: string;
+  aud?: string | string[];
+  exp?: number;
+  iat?: number;
+  sub?: string;
+  email?: string;
+  email_verified?: string | boolean;
+  is_private_email?: string | boolean;
+  nonce?: string;
+  nonce_supported?: boolean;
+}
+
+interface AppleJWK {
+  kty: string;
+  kid: string;
+  use?: string;
+  alg?: string;
+  n: string;   // RSA modulus, base64url
+  e: string;   // RSA exponent, base64url
+}
+
+interface AppleJWKSResponse {
+  keys: AppleJWK[];
+}
+
+export const onRequestOptions = async (): Promise<Response> => {
+  return new Response(null, { status: 204, headers: CORS });
+};
+
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Rate limit by IP — auth endpoints aren't authenticated yet. Matches the
+  // /api/auth/google posture (20/min/IP).
+  const rl = await checkRateLimit(env, request, "auth/apple", 20);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS);
+  // --- Configuration gates --------------------------------------------------
+  // Refuse to mint tokens without a real JWT secret. Without this, an
+  // attacker with source access could forge VoCal sessions. Mirror of the
+  // wave-1 hardening on /api/auth/google.
+  let appSecret = env.JWT_SECRET;
+  if (!appSecret || appSecret.length < 16) {
+    if (env.DB) {
+      console.error("auth/apple: refusing to sign — JWT_SECRET missing or weak");
+      return json({ error: "Server auth misconfigured" }, 503);
+    }
+    // No DB ≈ local dev; the dev fallback is acceptable for `wrangler pages dev`.
+    appSecret = "vocal-dev-secret-rotate-in-prod";
+  }
+  // The audience check is the entire reason Apple's JWT verification is
+  // safer than someone else's. Without it, an identity_token issued for ANY
+  // app on Apple's platform could mint a VoCal session.
+  if (!env.APPLE_BUNDLE_ID || env.APPLE_BUNDLE_ID.length < 3) {
+    console.error("auth/apple: refusing to verify — APPLE_BUNDLE_ID not set");
+    return json({ error: "Server not configured for Sign in with Apple" }, 503);
+  }
+  const allowedAudiences = [env.APPLE_BUNDLE_ID];
+  if (env.APPLE_AUDIENCES) {
+    for (const a of env.APPLE_AUDIENCES.split(",")) {
+      const trimmed = a.trim();
+      if (trimmed) allowedAudiences.push(trimmed);
+    }
+  }
+
+  // --- Parse + validate request body ---------------------------------------
+  let body: AppleAuthBody;
+  try {
+    body = (await request.json()) as AppleAuthBody;
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+  const idToken = body.identity_token?.trim();
+  if (!idToken) return json({ error: "identity_token required" }, 400);
+
+  // --- Decode the JWT header + payload (no signature check yet) ------------
+  const parts = idToken.split(".");
+  if (parts.length !== 3) return json({ error: "identity_token is not a JWT" }, 400);
+  let header: AppleJWTHeader;
+  let payload: AppleJWTPayload;
+  try {
+    header = JSON.parse(decodeUtf8(base64UrlDecode(parts[0]))) as AppleJWTHeader;
+    payload = JSON.parse(decodeUtf8(base64UrlDecode(parts[1]))) as AppleJWTPayload;
+  } catch {
+    return json({ error: "identity_token JWT is malformed" }, 400);
+  }
+
+  // Algorithm check — Apple uses RS256. Reject anything else, especially
+  // `none`, which would be a critical bypass.
+  if (header.alg !== "RS256") {
+    return json({ error: "Unsupported identity_token alg" }, 401);
+  }
+  if (!header.kid) {
+    return json({ error: "identity_token missing kid" }, 401);
+  }
+
+  // --- Verify issuer, audience, expiry on the decoded payload --------------
+  if (payload.iss !== APPLE_ISSUER) {
+    return json({ error: "Untrusted issuer" }, 401);
+  }
+  const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  const audMatch = aud.some(a => typeof a === "string" && allowedAudiences.includes(a));
+  if (!audMatch) {
+    return json({ error: "Untrusted audience" }, 401);
+  }
+  // exp is unix seconds. We allow a 60s clock skew tolerance in our favor —
+  // i.e. accept tokens that EXPIRED <=60s ago, since iOS networking can be
+  // slow. Do NOT extend it in the "future" direction since that's nbf.
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (typeof payload.exp !== "number" || payload.exp < nowSec - 60) {
+    return json({ error: "identity_token expired" }, 401);
+  }
+  if (!payload.sub || typeof payload.sub !== "string") {
+    return json({ error: "identity_token missing sub" }, 401);
+  }
+  // If iOS supplied user_id (Apple's `sub`) cross-check it — catches a
+  // wrong-token paste.
+  if (body.user_id && body.user_id !== payload.sub) {
+    return json({ error: "user_id does not match identity_token sub" }, 401);
+  }
+
+  // --- Fetch Apple's JWKS, find the matching key, verify the signature -----
+  // Per task spec: fetch once per invocation; no cross-invocation cache.
+  let jwks: AppleJWKSResponse;
+  try {
+    const res = await fetch(APPLE_JWKS_URL, {
+      headers: { "Accept": "application/json" }
+    });
+    if (!res.ok) {
+      console.error("auth/apple: JWKS fetch failed", res.status);
+      return json({ error: "Failed to fetch Apple keys" }, 502);
+    }
+    jwks = (await res.json()) as AppleJWKSResponse;
+  } catch (err) {
+    console.error("auth/apple: JWKS fetch error", (err as Error).message);
+    return json({ error: "Failed to fetch Apple keys" }, 502);
+  }
+  const jwk = jwks.keys?.find(k => k.kid === header.kid && k.kty === "RSA");
+  if (!jwk) {
+    return json({ error: "No matching Apple key for kid" }, 401);
+  }
+
+  const sigValid = await verifyRS256(parts[0], parts[1], parts[2], jwk);
+  if (!sigValid) {
+    return json({ error: "identity_token signature invalid" }, 401);
+  }
+
+  // --- Upsert into D1 -------------------------------------------------------
+  // Mirror google.ts naming convention: id = `apple_<sub>`. The schema has
+  // `apple_sub` as a UNIQUE column so we can also enforce the link there.
+  const userId = `apple_${payload.sub.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 96)}`;
+  const now = Date.now();
+  // Apple's full name + email are ONLY sent on the very first sign-in;
+  // every subsequent call we synthesize "Friend" from what we have. Don't
+  // overwrite an existing display name on re-auth.
+  const displayName = (() => {
+    const given = body.full_name?.given?.trim();
+    const family = body.full_name?.family?.trim();
+    if (given || family) return [given, family].filter(Boolean).join(" ").slice(0, 80);
+    return "Friend";
+  })();
+
+  let isNewUser = false;
+  if (env.DB) {
+    try {
+      const existing = await env.DB
+        .prepare("SELECT id FROM users WHERE id = ?1 OR apple_sub = ?2")
+        .bind(userId, payload.sub).first<{ id: string }>();
+      isNewUser = !existing;
+      await env.DB
+        .prepare(
+          // ON CONFLICT(id): refresh updated_at + apple_sub, but DON'T clobber
+          // the display_name with "Friend" if the user has already set one.
+          // We use COALESCE to preserve the existing value when the new one
+          // is the placeholder.
+          `INSERT INTO users (id, apple_sub, display_name, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?4)
+           ON CONFLICT(id) DO UPDATE SET
+             apple_sub = excluded.apple_sub,
+             display_name = COALESCE(NULLIF(excluded.display_name, 'Friend'), users.display_name),
+             updated_at = excluded.updated_at`
+        )
+        .bind(userId, payload.sub, displayName, now)
+        .run();
+    } catch (err) {
+      console.error("auth/apple: D1 upsert failed", (err as Error).message);
+      // Non-fatal — issue the token anyway.
+    }
+  }
+
+  // --- Optional anonymous-data merge ---------------------------------------
+  let mergedRows = 0;
+  let mergeErrors: string[] = [];
+  if (body.link_anonymous_user_id && body.link_anonymous_token) {
+    const merge = await mergeAnonymousData(
+      { DB: env.DB, JWT_SECRET: env.JWT_SECRET },
+      body.link_anonymous_user_id,
+      body.link_anonymous_token,
+      userId
+    );
+    mergedRows = merge.merged;
+    mergeErrors = merge.errors;
+    console.log("[merge] anon=%s -> new=%s rows=%d errors=%s",
+      body.link_anonymous_user_id, userId, merge.merged, merge.errors.join(";") || "none");
+  }
+
+  // --- Issue our JWT --------------------------------------------------------
+  const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
+  const token = await signJWT(
+    {
+      sub: userId,
+      provider: "apple",
+      email: payload.email,
+      apple_sub: payload.sub
+    },
+    appSecret,
+    expiresAt
+  );
+
+  return json({
+    user_id: userId,
+    token,
+    expires_at: expiresAt,
+    email: payload.email,
+    name: displayName === "Friend" ? undefined : displayName,
+    is_new_user: isNewUser,
+    merged_rows: mergedRows,
+    ...(mergeErrors.length ? { merge_errors: mergeErrors } : {})
+  });
+};
+
+// -- Crypto helpers (kept local to avoid leaking onto the shared JWT API) ----
+
+function base64UrlDecode(input: string): Uint8Array {
+  const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
+  const raw = atob(padded);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes);
+}
+
+async function verifyRS256(
+  headerB64: string,
+  payloadB64: string,
+  sigB64: string,
+  jwk: AppleJWK
+): Promise<boolean> {
+  // Web Crypto's importKey accepts JWK format directly — convenient since
+  // Apple already publishes the keys in JWK form.
+  try {
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      {
+        kty: jwk.kty,
+        n: jwk.n,
+        e: jwk.e,
+        alg: "RS256",
+        ext: true
+      } as JsonWebKey,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+    const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+    const sig = base64UrlDecode(sigB64);
+    return await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, sig, data);
+  } catch (err) {
+    console.error("auth/apple: RS256 verify threw", (err as Error).message);
+    return false;
+  }
+}

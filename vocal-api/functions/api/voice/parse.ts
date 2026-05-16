@@ -10,6 +10,7 @@
 import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env, VoiceParsePayload } from "../../../src/types";
 import { parseTranscript } from "../../../src/ai/foodParser";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -26,6 +27,12 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Rate limit: 60/min/identity. Voice parsing is cheap on the LLM side
+  // (text-only) but a real user logs a meal a few times a day at most —
+  // 60/min/identity is ~100x normal usage and still blocks abusive volume.
+  const rl = await checkRateLimit(env, request, "voice/parse", 60);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS_HEADERS);
+
   // Pre-flight size check — reject before allocating a large string.
   const contentLength = Number(request.headers.get("content-length") || "0");
   if (contentLength && contentLength > MAX_REQUEST_BYTES) {

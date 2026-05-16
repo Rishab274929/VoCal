@@ -15,6 +15,7 @@ import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env } from "../../../src/types";
 import { chat } from "../../../src/ai/llmClient";
 import { authIdentity, resolveUserId } from "../../../src/lib/auth";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -61,6 +62,11 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Rate limit: 30/min/identity. Coach replies hit the LLM every time,
+  // so an unattended client looping on a chat box is the main risk.
+  const rl = await checkRateLimit(env, request, "coach", 30);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS);
+
   // Size cap — coach payloads include a history array but should never exceed
   // a few KB. 64KB is comfortable headroom and stops malicious giant bodies.
   const contentLength = Number(request.headers.get("content-length") || "0");

@@ -5,6 +5,7 @@
 // Returns: { user_id, token, expires_at }
 
 import { signJWT } from "../../../src/lib/jwt";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 interface AnonymousPayload {
   device_id?: string;
@@ -37,7 +38,19 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
   const bindings = env as unknown as {
     DB?: D1Database;
     JWT_SECRET?: string;
+    FOOD_KV?: KVNamespace;
   };
+
+  // Rate-limit by IP. Anonymous handout is cheap server-side, but a flood
+  // would still pollute the users table; 20/min/IP catches abuse early.
+  const rl = await checkRateLimit(bindings, request, "auth/anonymous", 20);
+  if (!rl.allowed) {
+    return rateLimitedResponse(rl, {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST,OPTIONS",
+      "access-control-allow-headers": "content-type,authorization",
+    });
+  }
 
   let body: AnonymousPayload = {};
   try {

@@ -43,5 +43,50 @@ Set in Cloudflare Pages dashboard → Settings → Environment variables → Sec
 
 Optional bindings:
 
-- `FOOD_KV` — KV namespace for the 30-day meal cache
+- `FOOD_KV` — KV namespace. Used for the 30-day meal cache **and** for the
+  per-minute rate limiter (`src/lib/rateLimit.ts`). Without it the limiter
+  fails open, which is fine for local dev but not for production.
 - `DB` — D1 database for persistent meal logging
+
+## Auth endpoints
+
+Three providers are wired in:
+
+- `/api/auth/anonymous` — device-bound 1h session (no secrets required).
+- `/api/auth/google` — requires `GOOGLE_CLIENT_ID_*` (at least one) +
+  `JWT_SECRET`.
+- `/api/auth/apple` — requires `APPLE_BUNDLE_ID` + `JWT_SECRET`. The
+  audience check is non-negotiable; without `APPLE_BUNDLE_ID` set the
+  endpoint returns 503.
+
+Both Google and Apple accept optional `link_anonymous_user_id` +
+`link_anonymous_token` body fields to merge an anon session's
+meals / body_metrics / coach_messages into the new authenticated
+identity. The merge helper lives in `src/lib/identityMerge.ts`.
+
+## D1 schema
+
+The schema is in `db/migrations/0001_initial.sql`. The `body_metrics`,
+`meals`, and `coach_messages` tables are all referenced by the identity
+merge helper — if you apply only a subset of migrations, the helper falls
+back to a meals-only merge with a warning logged. Apply with:
+
+```bash
+wrangler d1 migrations apply <db-name>
+```
+
+## Rate limiting
+
+`src/lib/rateLimit.ts` is a KV-backed minute-bucket limiter. Limits per
+endpoint:
+
+| Endpoint            | Limit               |
+|---------------------|---------------------|
+| `/api/photo/parse`  | 30 / min / identity |
+| `/api/voice/parse`  | 60 / min / identity |
+| `/api/coach`        | 30 / min / identity |
+| `/api/bodyfat`      | 10 / min / identity |
+| `/api/auth/*`       | 20 / min / IP       |
+
+When a caller exceeds the limit they get a 429 with a `Retry-After` header
+and a body of `{ "error": "rate_limited", "retry_after_sec": N }`.

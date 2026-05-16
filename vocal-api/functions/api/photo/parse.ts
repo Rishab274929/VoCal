@@ -19,6 +19,7 @@ import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env, VoiceParseResponse, ParsedMeal } from "../../../src/types";
 import { guessSlot } from "../../../src/lib/normalize";
 import { chat } from "../../../src/ai/llmClient";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -91,6 +92,12 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Rate limit BEFORE parsing the body so abuse can't even force the
+  // megabytes-of-base64 allocation. 30/min/identity — photo + vision is
+  // the most expensive LLM call we make.
+  const rl = await checkRateLimit(env, request, "photo/parse", 30);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS);
+
   // Pre-flight size check: refuse before parsing the body to keep a malicious
   // 50MB upload from forcing a giant string allocation in the worker.
   const contentLength = Number(request.headers.get("content-length") || "0");
