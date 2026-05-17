@@ -21,21 +21,26 @@ import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
 
-Future<void> showMealPhotoSheet(BuildContext context) {
+Future<void> showMealPhotoSheet(BuildContext context, {File? prefilledImage}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Palette.ink,
     barrierColor: Colors.black.withOpacity(0.6),
-    builder: (_) => const FractionallySizedBox(
+    builder: (_) => FractionallySizedBox(
       heightFactor: 0.96,
-      child: MealPhotoSheet(),
+      child: MealPhotoSheet(prefilledImage: prefilledImage),
     ),
   );
 }
 
 class MealPhotoSheet extends StatefulWidget {
-  const MealPhotoSheet({super.key});
+  /// Caller (UnifiedCameraSheet shutter) can hand a fully-captured frame so
+  /// the sheet skips the camera/gallery chooser and lands straight on the
+  /// preview-and-describe flow. When non-null, the recorder also auto-starts
+  /// on appear so the user can describe the plate without a second tap.
+  final File? prefilledImage;
+  const MealPhotoSheet({super.key, this.prefilledImage});
 
   @override
   State<MealPhotoSheet> createState() => _MealPhotoSheetState();
@@ -64,6 +69,19 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
   void initState() {
     super.initState();
     _recorder.addListener(_onRecorder);
+    // If the caller (UnifiedCameraSheet) handed us an image already, skip
+    // the picker — start the recorder and fire the first parse the moment
+    // we land so the user can describe the plate without a second tap.
+    final prefill = widget.prefilledImage;
+    if (prefill != null) {
+      _image = prefill;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        // ignore: unawaited_futures
+        _startInlineRecording();
+        await _runFirstPass();
+      });
+    }
   }
 
   void _onRecorder() {
