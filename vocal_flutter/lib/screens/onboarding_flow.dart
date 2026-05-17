@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../dev_bypass.dart';
 import '../services/auth_session.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
@@ -123,6 +124,31 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     profile.heightInches = (_heightFeet * 12 + _heightInches).toDouble();
     profile.weightLbs = _weight.toDouble();
     app.completeOnboarding(profile, _goalKcal.toInt());
+  }
+
+  /// Demo-mode bypass — short-circuits the entire onboarding flow and grants
+  /// Pro entitlement locally. Gated behind `DevBypass.enabled`; tree-shaken
+  /// when that constant is false. Pulls all defaults from
+  /// `DevBypass.defaultProfile()` so this and the iOS counterpart stay in
+  /// sync without manual coordination.
+  ///
+  /// We funnel through `completeOnboarding` (rather than `updateProfile`
+  /// directly) so the `hasCompletedOnboarding` flag flips and the
+  /// `RootView` AnimatedSwitcher cuts straight to `ContentView`. No
+  /// imperative Navigator push needed — same path as the regular finish.
+  void _skipDemo() {
+    final app = context.read<AppModel>();
+    final demo = DevBypass.defaultProfile();
+    // Preserve any displayName the user already typed on the name step —
+    // tapping Skip from later steps shouldn't wipe deliberate input. The
+    // pitch step's `_name` is empty so this falls through to "Demo".
+    final typed = _name.text.trim();
+    if (typed.isNotEmpty) {
+      demo.displayName = typed;
+    }
+    app.completeOnboarding(demo, demo.dailyCalorieGoal);
+    // Mirror onto the live profile too — completeOnboarding replaces the
+    // profile wholesale, so entitlement = Pro is already set via `demo`.
   }
 
   @override
@@ -371,6 +397,32 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         Text(
             "Optional. Skip and we'll keep your data device-only.",
             style: AppType.body(11, color: Palette.smoke)),
+        // Dev-mode demo bypass. Wrapped in `if (DevBypass.enabled)` so the
+        // Dart tree-shaker drops this entire branch from a release build
+        // where the constant is flipped to false. Visually quiet on
+        // purpose — a small smoke-colored text link, NOT a primary CTA —
+        // so it can't be mistaken for the real path during a hands-on demo.
+        if (DevBypass.enabled) ...[
+          const SizedBox(height: 16),
+          Center(
+            child: GestureDetector(
+              onTap: _signingIn ? null : _skipDemo,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                // 24 of bottom-padding ensures the tap target clears the
+                // global onboarding footer's CTA — at smaller phone heights
+                // the pitch content scrolls and this would otherwise sit
+                // directly behind the "Get started" button.
+                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                child: Text(
+                  '› Skip onboarding · demo mode',
+                  style: AppType.body(11,
+                      weight: FontWeight.w500, color: Palette.smoke),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

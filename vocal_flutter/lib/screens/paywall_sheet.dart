@@ -4,6 +4,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../dev_bypass.dart';
+import '../models/models.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -221,6 +223,50 @@ class _PaywallSheetState extends State<PaywallSheet> {
                         ],
                       ],
                     ),
+                    // Dev-mode bypass — quiet ghost link below the
+                    // legitimate footer affordances. Wrapped in
+                    // `DevBypass.enabled` so a release build (constant
+                    // flipped to false) tree-shakes it out entirely.
+                    //
+                    // The hard-gate guards above (PopScope, isDismissible,
+                    // enableDrag) stay intact — this button is the EXPLICIT
+                    // demo-mode escape hatch, separate from the user-facing
+                    // "Maybe later" affordance which is gated to onboarding.
+                    if (DevBypass.enabled) ...[
+                      const SizedBox(height: 10),
+                      Center(
+                        child: GestureDetector(
+                          onTap: () {
+                            // Order matches the "Maybe later" path: grant
+                            // Pro, pop the sheet, THEN notify the caller.
+                            // Notifying before pop would have onboarding's
+                            // _finish() race against this sheet's exit
+                            // animation and we'd see the brief frozen-overlay
+                            // bug the original comment warned about.
+                            final app = context.read<AppModel>();
+                            app.updateProfile(
+                                (p) => p.entitlement = Entitlement.pro);
+                            Navigator.of(context).maybePop();
+                            // If we were opened from onboarding, fire its
+                            // onSkip so the flow advances past the paywall
+                            // step — otherwise the user is stuck staring at
+                            // the now-popped sheet's parent (the ready
+                            // step) with no obvious way out.
+                            widget.onSkip?.call();
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              '› Skip paywall · demo mode',
+                              style: AppType.body(11,
+                                  weight: FontWeight.w500,
+                                  color: Palette.smoke),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
