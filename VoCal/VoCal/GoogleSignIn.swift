@@ -191,7 +191,10 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
             // data tied to an identity.
             session.prefersEphemeralWebBrowserSession = true
             self.session = session
-            session.start()
+            if !session.start() {
+                continuation.resume(throwing: Error.notConfigured)
+                return
+            }
         }
     }
 
