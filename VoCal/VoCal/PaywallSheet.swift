@@ -44,13 +44,6 @@ struct PaywallSheet: View {
                         .padding(.vertical, 4)
                         .background(Capsule().fill(Theme.Palette.voltage))
                     Spacer()
-                    // Show the X only when this is an exploratory upgrade flow
-                    // launched from Profile (a `pro` user wanting to inspect)
-                    // or after the user already has pro (so they can close it).
-                    // For the post-onboarding hard paywall (no callbacks set,
-                    // user is still .free) the X is hidden — they must
-                    // subscribe, restore, or use the explicit "Maybe later"
-                    // route exposed by callers that pass `onSkip`.
                     if onSkip == nil && (appModel.profile.entitlement == .pro || store.hasPro) {
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
@@ -63,23 +56,21 @@ struct PaywallSheet: View {
                     }
                 }
                 .padding(.horizontal, 28)
-                .padding(.top, 20)
+                .padding(.top, 16)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
-                        headline
-                        features
-                        planPicker
-                    }
-                    .padding(.horizontal, 28)
-                    .padding(.top, 24)
-                    .padding(.bottom, 24)
+                VStack(alignment: .leading, spacing: 16) {
+                    headline
+                    features
+                    planPicker
                 }
-                .scrollIndicators(.hidden)
+                .padding(.horizontal, 28)
+                .padding(.top, 16)
+
+                Spacer(minLength: 8)
 
                 footer
                     .padding(.horizontal, 28)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 20)
             }
         }
         // SECURITY: lock the sheet against swipe-down dismissal during the
@@ -100,23 +91,19 @@ struct PaywallSheet: View {
     // MARK: headline
 
     private var headline: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("UPGRADE")
-                .eyebrow(Theme.Palette.pulse)
+        VStack(alignment: .leading, spacing: 6) {
             (
-                Text("Track every chain meal. ")
+                Text("Track every meal. ")
                     .foregroundStyle(Theme.Palette.bone)
                 + Text("By voice.")
                     .foregroundStyle(Theme.Palette.voltage)
-                    .font(Theme.Font.serif(36, weight: .medium, italic: true))
+                    .font(Theme.Font.serif(26, weight: .medium, italic: true))
             )
-            .font(Theme.Font.serif(36, weight: .medium))
-            .lineSpacing(2)
+            .font(Theme.Font.serif(26, weight: .medium))
 
-            Text("Unlimited voice logging. Restaurant-aware macros. Photo fact-check. Body fat from selfies. Apple Watch + Live Activity.")
-                .font(.system(size: 14))
+            Text("Unlimited logging, restaurant macros, photo fact-check, body fat, coach.")
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.Palette.ash)
-                .padding(.top, 4)
         }
     }
 
@@ -124,19 +111,16 @@ struct PaywallSheet: View {
 
     private var features: some View {
         VStack(spacing: 0) {
-            featureRow(icon: "waveform", title: "Unlimited voice logs", detail: "Free is 3/day. Pro: unlimited.")
+            featureRow(icon: "waveform", title: "Unlimited voice logs", detail: "Free caps at 3/day")
             divider
-            featureRow(icon: "fork.knife", title: "Restaurant intelligence", detail: "Top 25 chains, plus agentic search.")
+            featureRow(icon: "fork.knife", title: "Restaurant macros", detail: "Top 25 chains + agentic search")
             divider
-            featureRow(icon: "camera.viewfinder", title: "Photo + voice fact-check", detail: "Snap, answer, log.")
+            featureRow(icon: "camera.viewfinder", title: "Photo fact-check", detail: "Snap a meal, verify macros")
             divider
-            featureRow(icon: "figure.arms.open", title: "BF% from selfies", detail: "Front + side photo, with confidence band.")
-            divider
-            featureRow(icon: "applewatch.radiowaves.left.and.right", title: "Watch + Live Activity", detail: "Log from your wrist or Dynamic Island.")
-            divider
-            featureRow(icon: "bubble.left.and.text.bubble.right", title: "Voice nutrition coach", detail: "Talk to it. It knows your day.")
+            featureRow(icon: "bubble.left.and.text.bubble.right", title: "Voice coach + BF%", detail: "Talk to it. Body-fat from selfies.")
         }
-        .padding(20)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
                 .fill(Theme.Palette.inkSurface)
@@ -148,18 +132,15 @@ struct PaywallSheet: View {
     }
 
     private func featureRow(icon: String, title: String, detail: String) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(Theme.Palette.voltage.opacity(0.12))
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.Palette.voltage)
-            }
-            .frame(width: 32, height: 32)
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Palette.voltage)
+                .frame(width: 24, height: 24)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.Palette.bone)
                 Text(detail)
                     .font(.system(size: 11))
@@ -167,10 +148,10 @@ struct PaywallSheet: View {
             }
             Spacer()
             Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(Theme.Palette.voltage)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
 
     private var divider: some View {
@@ -189,38 +170,38 @@ struct PaywallSheet: View {
     private func planCard(_ p: StoreKitStore.Plan, price: String, per: String, savings: String?) -> some View {
         let active = plan == p
         return Button { plan = p } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(p == .annual ? "Annual" : "Monthly")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(active ? Theme.Palette.voltage : Theme.Palette.bone)
                     Spacer()
                     if let savings {
                         Text(savings)
                             .font(.system(size: 9, weight: .bold))
-                            .tracking(1.0)
+                            .tracking(0.5)
                             .foregroundStyle(Theme.Palette.ink)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
                             .background(Capsule().fill(Theme.Palette.voltage))
                     }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(price)
-                        .font(Theme.Font.serif(28, weight: .medium))
+                        .font(Theme.Font.serif(22, weight: .medium))
                         .foregroundStyle(Theme.Palette.bone)
                     Text("/ \(per)")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(Theme.Palette.smoke)
                 }
             }
-            .padding(16)
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Theme.Palette.inkSurface)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(active ? Theme.Palette.voltage : Theme.Palette.hairlineStrong, lineWidth: active ? 2 : 1)
                     )
             )
