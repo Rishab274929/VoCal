@@ -148,6 +148,7 @@ struct MealPhotoSheet: View {
     @State private var image: UIImage?
     @State private var showingCamera = false
     @State private var showingLibrary = false
+    @State private var showingPaywall = false
     @State private var parsing = false
     @State private var firstPassMeal: VoiceParseResponse.ParsedMeal?
     @State private var followUpQuestion: String?
@@ -215,6 +216,9 @@ struct MealPhotoSheet: View {
                 startListening()
             }
             .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallSheet()
         }
         .onAppear {
             // If a caller (UnifiedCameraSheet shutter) handed us a fully-
@@ -568,6 +572,8 @@ struct MealPhotoSheet: View {
             } else {
                 followUpQuestion = "Could you add a portion size or brand name?"
             }
+        } catch let gate as BackendAPIError where gate.needsUserAction {
+            await handleBackendGate(gate)
         } catch {
             // Surface the real reason so the user knows it's a network issue
             // rather than the backend rejecting their description. Do NOT
@@ -612,9 +618,31 @@ struct MealPhotoSheet: View {
                 followUpQuestion = "Still not enough info to log. Add a brand or portion?"
                 followUpAnswer = ""
             }
+        } catch let gate as BackendAPIError where gate.needsUserAction {
+            await handleBackendGate(gate)
+            followUpAnswer = ""
         } catch {
             followUpQuestion = "Couldn't reach the server (\(error.localizedDescription)). Try a brand or portion size?"
             followUpAnswer = ""
+        }
+    }
+
+    private func handleBackendGate(_ error: BackendAPIError) async {
+        switch error {
+        case .signInRequired:
+            followUpQuestion = "Sign in again to use VoCal's AI parser."
+        case .proRequired:
+            let synced = await StoreKitStore.shared.syncServerEntitlement(force: true, surfaceErrors: true)
+            if synced {
+                followUpQuestion = "Pro synced. Try parsing again."
+            } else {
+                followUpQuestion = StoreKitStore.shared.lastError ?? "VoCal Pro is required for photo parsing."
+                if !StoreKitStore.shared.hasPro {
+                    showingPaywall = true
+                }
+            }
+        case .server, .malformed:
+            followUpQuestion = error.localizedDescription
         }
     }
 

@@ -63,6 +63,9 @@ struct LogMealByVoiceIntent: AppIntent {
         let response: VoiceParseResponse
         do {
             response = try await VoiceParseAPI.parse(transcript: trimmed)
+        } catch let gate as BackendAPIError where gate.needsUserAction {
+            let dialog = IntentDialog(stringLiteral: gate.localizedDescription)
+            return .result(dialog: dialog)
         } catch {
             // Hard network failure → fall back through the offline matcher.
             // The matcher already short-circuits chain queries to deterministic
@@ -316,6 +319,12 @@ enum VoiceParseAPI {
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             return try JSONDecoder().decode(VoiceParseResponse.self, from: data)
+        }
+        if let http = response as? HTTPURLResponse {
+            let apiError = BackendAPIError.from(status: http.statusCode, data: data)
+            if apiError.needsUserAction {
+                throw apiError
+            }
         }
         // Network failed — fall through to shared offline fallback. Siri can't
         // easily do a follow-up mid-intent, so we collapse `.followUp` to a
