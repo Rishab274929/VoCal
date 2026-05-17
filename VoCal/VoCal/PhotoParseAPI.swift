@@ -89,8 +89,7 @@ enum PhotoParseAPI {
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw Error.malformed }
         if !(200..<300).contains(http.statusCode) {
-            let errBody = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
-            throw Error.server(http.statusCode, errBody["error"] ?? "")
+            throw BackendAPIError.from(status: http.statusCode, data: data)
         }
         let parsed = try JSONDecoder().decode(VoiceParseResponse.self, from: data)
         return parsed

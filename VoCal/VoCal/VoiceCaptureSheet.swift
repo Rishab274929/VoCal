@@ -29,6 +29,7 @@ struct VoiceCaptureSheet: View {
     @State private var parsedMeal: MealEntry?
     @State private var parseStartedAt: Date?
     @State private var isUserEditing = false
+    @State private var showingPaywall = false
 
     @StateObject private var recorder = SpeechRecorder()
 
@@ -87,6 +88,9 @@ struct VoiceCaptureSheet: View {
             if phase == .listening, !isUserEditing, !newValue.isEmpty {
                 transcriptDraft = newValue
             }
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallSheet()
         }
     }
 
@@ -431,6 +435,8 @@ struct VoiceCaptureSheet: View {
                 return
             }
             applyParsedMeal(meal, transcript: response.transcript)
+        } catch let gate as BackendAPIError where gate.needsUserAction {
+            await handleBackendGate(gate)
         } catch {
             // Network failed — go through the shared offline fallback module.
             switch OfflineFallback.resolve(transcript: payloadTranscript, followUpAnswer: followUp) {
@@ -455,6 +461,26 @@ struct VoiceCaptureSheet: View {
                 }
             }
         }
+    }
+
+    private func handleBackendGate(_ error: BackendAPIError) async {
+        switch error {
+        case .signInRequired:
+            parseError = "Sign in again to use VoCal's AI parser."
+        case .proRequired:
+            let synced = await StoreKitStore.shared.syncServerEntitlement(force: true, surfaceErrors: true)
+            if synced {
+                parseError = "Pro synced. Try parsing again."
+            } else {
+                parseError = StoreKitStore.shared.lastError ?? "VoCal Pro is required for AI parsing."
+                if !StoreKitStore.shared.hasPro {
+                    showingPaywall = true
+                }
+            }
+        case .server, .malformed:
+            parseError = error.localizedDescription
+        }
+        withAnimation { phase = .listening }
     }
 
     private func applyParsedMeal(_ raw: VoiceParseResponse.ParsedMeal, transcript: String, reasoning: String? = nil) {
@@ -519,8 +545,11 @@ private enum VoiceAPIClient {
         await AuthSession.shared.authorize(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
+        guard let http = response as? HTTPURLResponse else {
+            throw BackendAPIError.malformed
+        }
+        if !(200..<300).contains(http.statusCode) {
+            throw BackendAPIError.from(status: http.statusCode, data: data)
         }
         return try JSONDecoder().decode(VoiceParseResponse.self, from: data)
     }

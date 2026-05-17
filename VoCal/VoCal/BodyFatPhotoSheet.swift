@@ -21,6 +21,7 @@ struct BodyFatPhotoSheet: View {
     @State private var front: UIImage?
     @State private var side: UIImage?
     @State private var showingCamera = false
+    @State private var showingPaywall = false
     @State private var capturingSlot: Step = .front
     @State private var estimating = false
     @State private var resultPct: Double?
@@ -30,6 +31,7 @@ struct BodyFatPhotoSheet: View {
     /// shown is the BMI-only fallback. Surfaces a one-liner so the user
     /// knows the confidence band reflects degraded inputs.
     @State private var visionFallbackUsed = false
+    @State private var visionGateMessage: String?
     /// Optional one-line reasoning from the vision model. Currently unused
     /// in the UI but kept so we can show it next to the band without
     /// another network round-trip later.
@@ -82,6 +84,9 @@ struct BodyFatPhotoSheet: View {
                 }
             )
             .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallSheet()
         }
     }
 
@@ -225,6 +230,15 @@ struct BodyFatPhotoSheet: View {
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.Palette.smoke)
                 }
+            } else if let gate = visionGateMessage {
+                VStack(alignment: .leading, spacing: 10) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.Palette.pulse)
+                    Text(gate)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.Palette.smoke)
+                }
             } else if let pct = resultPct {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(String(format: "%.1f", pct))
@@ -321,7 +335,7 @@ struct BodyFatPhotoSheet: View {
                 }
             case .result:
                 GhostButton(title: "Retake") { reset() }
-                VoltageButton(title: "Save & close", icon: "checkmark") {
+                VoltageButton(title: resultPct == nil ? "Close" : "Save & close", icon: resultPct == nil ? "xmark" : "checkmark") {
                     persist()
                     dismiss()
                 }
@@ -351,6 +365,7 @@ struct BodyFatPhotoSheet: View {
         side = nil
         resultPct = nil
         visionFallbackUsed = false
+        visionGateMessage = nil
         visionReasoning = nil
         withAnimation(.spring) { step = .intro }
     }
@@ -380,6 +395,9 @@ struct BodyFatPhotoSheet: View {
                     visionReasoning = visionResult.reasoning
                 }
                 return
+            } catch let gate as BackendAPIError where gate.needsUserAction {
+                await handleBackendGate(gate)
+                return
             } catch {
                 // Fall through to BMI fallback. Mark the disclosure so the
                 // user can see why the band is wider than the polished
@@ -408,6 +426,31 @@ struct BodyFatPhotoSheet: View {
             resultConfidence = visionFallbackUsed
                 ? max(0.40, min(confidence, 0.55))
                 : confidence
+        }
+    }
+
+    private func handleBackendGate(_ error: BackendAPIError) async {
+        let message: String
+        switch error {
+        case .signInRequired:
+            message = "Sign in again to use VoCal's body-fat vision estimate."
+        case .proRequired:
+            let synced = await StoreKitStore.shared.syncServerEntitlement(force: true, surfaceErrors: true)
+            if synced {
+                message = "Pro synced. Retake the estimate to use vision."
+            } else {
+                message = StoreKitStore.shared.lastError ?? "VoCal Pro is required for body-fat vision."
+                if !StoreKitStore.shared.hasPro {
+                    showingPaywall = true
+                }
+            }
+        case .server, .malformed:
+            message = error.localizedDescription
+        }
+        await MainActor.run {
+            resultPct = nil
+            visionFallbackUsed = false
+            visionGateMessage = message
         }
     }
 
@@ -577,8 +620,7 @@ enum BodyFatVisionAPI {
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw APIError.malformed }
         if !(200..<300).contains(http.statusCode) {
-            let errBody = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
-            throw APIError.server(http.statusCode, errBody["error"] ?? "")
+            throw BackendAPIError.from(status: http.statusCode, data: data)
         }
         let body = try JSONDecoder().decode(ResponseBody.self, from: data)
         guard let pct = body.body_fat_pct, pct.isFinite, pct > 0, pct < 80 else {

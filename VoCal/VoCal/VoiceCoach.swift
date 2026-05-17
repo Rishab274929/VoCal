@@ -240,12 +240,32 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
             )
             history.append(CoachMessage(role: .assistant, content: reply))
             speak(reply)
+        } catch let gate as BackendAPIError where gate.needsUserAction {
+            await handleBackendGate(gate)
         } catch {
             let fallback = "Sorry — I couldn't reach the coach. \(error.localizedDescription)"
             history.append(CoachMessage(role: .assistant, content: fallback))
             phase = .idle
             lastError = error.localizedDescription
         }
+    }
+
+    private func handleBackendGate(_ error: BackendAPIError) async {
+        let message: String
+        switch error {
+        case .signInRequired:
+            message = "Sign in again to use VoCal Coach."
+        case .proRequired:
+            let synced = await StoreKitStore.shared.syncServerEntitlement(force: true, surfaceErrors: true)
+            message = synced
+                ? "Pro synced. Try asking again."
+                : (StoreKitStore.shared.lastError ?? "VoCal Pro is required for Coach.")
+        case .server, .malformed:
+            message = error.localizedDescription
+        }
+        history.append(CoachMessage(role: .assistant, content: message))
+        lastError = message
+        phase = .idle
     }
 
     // MARK: - TTS
@@ -521,6 +541,8 @@ enum CoachAPI {
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw Error.badResponse }
         if !(200..<300).contains(http.statusCode) {
+            let gate = BackendAPIError.from(status: http.statusCode, data: data)
+            if gate.needsUserAction { throw gate }
             let msg = (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "HTTP \(http.statusCode)"
             throw Error.server(http.statusCode, msg)
         }

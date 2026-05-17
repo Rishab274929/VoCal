@@ -20,3 +20,42 @@ enum APIConfig {
         return "https://vocal.best/api"
     }
 }
+
+enum BackendAPIError: Swift.Error, LocalizedError {
+    case signInRequired(String)
+    case proRequired(String)
+    case server(Int, String)
+    case malformed
+
+    var errorDescription: String? {
+        switch self {
+        case .signInRequired(let message):
+            return message.isEmpty ? "Sign in again to continue." : message
+        case .proRequired(let message):
+            return message.isEmpty ? "VoCal Pro is required." : message
+        case .server(let status, let message):
+            return message.isEmpty ? "Server \(status)" : "Server \(status): \(message)"
+        case .malformed:
+            return "Unexpected response from the server."
+        }
+    }
+
+    var needsUserAction: Bool {
+        switch self {
+        case .signInRequired, .proRequired: return true
+        case .server, .malformed: return false
+        }
+    }
+
+    static func from(status: Int, data: Data) -> BackendAPIError {
+        let message = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? ""
+        switch status {
+        case 401:
+            return .signInRequired(message.isEmpty ? "Sign in again to continue." : message)
+        case 402:
+            return .proRequired(message.isEmpty ? "VoCal Pro is required." : message)
+        default:
+            return .server(status, message)
+        }
+    }
+}
