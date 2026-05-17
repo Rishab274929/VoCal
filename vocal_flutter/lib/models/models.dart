@@ -60,6 +60,18 @@ class MealEntry {
   MealSlot slot;
   MealSource source;
 
+  // Optional micronutrients. All nullable — backend may omit them on parses
+  // that don't have high-confidence data, and v1 snapshots predate these
+  // fields entirely (fromJson tolerates absence). Units are spelled out in
+  // the field name so a future reader doesn't have to grep for "mg vs g."
+  int? sodiumMg;
+  int? fiberG;
+  int? sugarG;
+  int? calciumMg;
+  int? ironMg;
+  int? vitaminCMg;
+  int? potassiumMg;
+
   MealEntry({
     String? id,
     required this.name,
@@ -71,7 +83,25 @@ class MealEntry {
     required this.loggedAt,
     required this.slot,
     required this.source,
+    this.sodiumMg,
+    this.fiberG,
+    this.sugarG,
+    this.calciumMg,
+    this.ironMg,
+    this.vitaminCMg,
+    this.potassiumMg,
   }) : id = id ?? _newId(name);
+
+  /// True when any micro field is populated — used by Today's "Micros" panel
+  /// to decide whether to render a row for this meal at all.
+  bool get hasAnyMicros =>
+      sodiumMg != null ||
+      fiberG != null ||
+      sugarG != null ||
+      calciumMg != null ||
+      ironMg != null ||
+      vitaminCMg != null ||
+      potassiumMg != null;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -84,6 +114,15 @@ class MealEntry {
         'loggedAt': loggedAt.toIso8601String(),
         'slot': slot.raw,
         'source': source.raw,
+        // Omit nulls so old snapshots roundtrip byte-identical when no
+        // micros were ever captured. Keeps the diff-friendly invariant.
+        if (sodiumMg != null) 'sodium_mg': sodiumMg,
+        if (fiberG != null) 'fiber_g': fiberG,
+        if (sugarG != null) 'sugar_g': sugarG,
+        if (calciumMg != null) 'calcium_mg': calciumMg,
+        if (ironMg != null) 'iron_mg': ironMg,
+        if (vitaminCMg != null) 'vitamin_c_mg': vitaminCMg,
+        if (potassiumMg != null) 'potassium_mg': potassiumMg,
       };
 
   factory MealEntry.fromJson(Map<String, dynamic> j) => MealEntry(
@@ -97,6 +136,13 @@ class MealEntry {
         loggedAt: DateTime.parse(j['loggedAt'] as String),
         slot: MealSlot.fromRaw(j['slot'] as String?),
         source: MealSource.fromRaw(j['source'] as String?),
+        sodiumMg: (j['sodium_mg'] as num?)?.toInt(),
+        fiberG: (j['fiber_g'] as num?)?.toInt(),
+        sugarG: (j['sugar_g'] as num?)?.toInt(),
+        calciumMg: (j['calcium_mg'] as num?)?.toInt(),
+        ironMg: (j['iron_mg'] as num?)?.toInt(),
+        vitaminCMg: (j['vitamin_c_mg'] as num?)?.toInt(),
+        potassiumMg: (j['potassium_mg'] as num?)?.toInt(),
       );
 }
 
@@ -309,6 +355,17 @@ class ParsedMeal {
   String source;
   double confidence;
 
+  // Mirrors the optional micros on MealEntry. Backend parser populates
+  // these when the LLM returns high-confidence values; absent → null and
+  // the UI just omits the row.
+  int? sodiumMg;
+  int? fiberG;
+  int? sugarG;
+  int? calciumMg;
+  int? ironMg;
+  int? vitaminCMg;
+  int? potassiumMg;
+
   ParsedMeal({
     required this.name,
     required this.detail,
@@ -319,6 +376,13 @@ class ParsedMeal {
     required this.slot,
     required this.source,
     required this.confidence,
+    this.sodiumMg,
+    this.fiberG,
+    this.sugarG,
+    this.calciumMg,
+    this.ironMg,
+    this.vitaminCMg,
+    this.potassiumMg,
   });
 
   ParsedMeal copy() => ParsedMeal(
@@ -331,6 +395,13 @@ class ParsedMeal {
         slot: slot,
         source: source,
         confidence: confidence,
+        sodiumMg: sodiumMg,
+        fiberG: fiberG,
+        sugarG: sugarG,
+        calciumMg: calciumMg,
+        ironMg: ironMg,
+        vitaminCMg: vitaminCMg,
+        potassiumMg: potassiumMg,
       );
 
   factory ParsedMeal.fromJson(Map<String, dynamic> j) => ParsedMeal(
@@ -343,6 +414,13 @@ class ParsedMeal {
         slot: j['slot'] as String? ?? 'snack',
         source: j['source'] as String? ?? 'voice',
         confidence: (j['confidence'] as num?)?.toDouble() ?? 0.5,
+        sodiumMg: (j['sodium_mg'] as num?)?.toInt(),
+        fiberG: (j['fiber_g'] as num?)?.toInt(),
+        sugarG: (j['sugar_g'] as num?)?.toInt(),
+        calciumMg: (j['calcium_mg'] as num?)?.toInt(),
+        ironMg: (j['iron_mg'] as num?)?.toInt(),
+        vitaminCMg: (j['vitamin_c_mg'] as num?)?.toInt(),
+        potassiumMg: (j['potassium_mg'] as num?)?.toInt(),
       );
 }
 

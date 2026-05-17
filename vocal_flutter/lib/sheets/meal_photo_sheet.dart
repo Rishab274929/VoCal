@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../services/photo_api.dart';
+import '../services/speech_recorder.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -43,11 +44,14 @@ class MealPhotoSheet extends StatefulWidget {
 class _MealPhotoSheetState extends State<MealPhotoSheet> {
   final _picker = ImagePicker();
   final _followUp = TextEditingController();
-  // Optional spoken/typed context the user adds before the parse. The image
-  // picker UI doesn't currently expose a voice-context field — left here as
-  // a hook so the next iteration can show a "describe what's on the plate"
-  // text input alongside the preview without restructuring this state.
+
+  // Live voice context — captured the moment a photo is confirmed and
+  // displayed under the preview while the parse runs. Stored as a string
+  // rather than a controller because we mostly *read* from the recorder
+  // and only need to surface a final value when /api/photo/parse is sent.
   String _voiceContext = '';
+  final _recorder = SpeechRecorder();
+  bool _voiceMuted = false; // user tapped stop/mute on the inline recorder
 
   File? _image;
   bool _parsing = false;
@@ -57,8 +61,29 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
   MealEntry? _saved;
 
   @override
+  void initState() {
+    super.initState();
+    _recorder.addListener(_onRecorder);
+  }
+
+  void _onRecorder() {
+    if (!mounted) return;
+    // Mirror the recorder's partial transcript into _voiceContext so the
+    // POST that fires from _runFirstPass picks up whatever the user just
+    // said. We intentionally don't trim here — the recorder already filters
+    // empty results and trailing whitespace is meaningful for confidence.
+    if (_recorder.partialTranscript.isNotEmpty) {
+      _voiceContext = _recorder.partialTranscript;
+    }
+    setState(() {});
+  }
+
+  @override
   void dispose() {
     _followUp.dispose();
+    _recorder.removeListener(_onRecorder);
+    _recorder.stop();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -72,8 +97,47 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
       _followUpQuestion = null;
       _error = null;
       _saved = null;
+      _voiceContext = '';
+      _voiceMuted = false;
     });
+    // Kick off the voice capture concurrently with the photo parse. The
+    // user reviews the preview while the recorder streams a transcript
+    // underneath; whatever they say becomes voice_context for the POST.
+    // If the recorder fails (perms denied, unavailable) we still parse —
+    // photo-only is a perfectly valid input, so we never block on voice.
+    //
+    // Note: we deliberately fire _runFirstPass() WITHOUT awaiting the
+    // recorder so the first /api/photo/parse turn goes out immediately
+    // with whatever voice_context is empty/partial at that instant. The
+    // user can answer the follow-up (which IS aware of their voice add)
+    // if the first pass needs disambiguation.
+    // ignore: unawaited_futures
+    _startInlineRecording();
     await _runFirstPass();
+  }
+
+  Future<void> _startInlineRecording() async {
+    if (_voiceMuted) return;
+    await _recorder.requestAuthorization();
+    if (!_recorder.isAuthorized || !_recorder.isAvailable) return;
+    if (!mounted) return;
+    try {
+      await _recorder.start();
+    } catch (_) {
+      // Soft-fail — photo-only path still works.
+    }
+  }
+
+  Future<void> _toggleVoiceMute() async {
+    if (_recorder.isRecording) {
+      await _recorder.stop();
+      if (!mounted) return;
+      setState(() => _voiceMuted = true);
+    } else {
+      if (!mounted) return;
+      setState(() => _voiceMuted = false);
+      await _startInlineRecording();
+    }
   }
 
   /// First pass: POST the image to /api/photo/parse with whatever voice
@@ -170,6 +234,17 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
   }
 
   void _commit(ParsedMeal m, MealSource source) {
+    // Stop the recorder the moment we commit — leaving it hot after save
+    // ate battery and made the dismiss animation feel laggy on Android.
+    // ignore: unawaited_futures
+    _recorder.stop();
+    // If we captured any voice context AND the caller passed a vanilla
+    // photo source, upgrade the saved entry's source to voicePhoto so
+    // Today's log icon reflects how it was actually captured.
+    final effectiveSource = (source == MealSource.photo &&
+            _voiceContext.trim().isNotEmpty)
+        ? MealSource.voicePhoto
+        : source;
     final entry = MealEntry(
       name: m.name,
       detail: m.detail,
@@ -179,7 +254,15 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
       fat: m.fatG,
       loggedAt: DateTime.now(),
       slot: MealSlot.fromRaw(m.slot),
-      source: source,
+      source: effectiveSource,
+      // Pass micros straight through from the parser when present.
+      sodiumMg: m.sodiumMg,
+      fiberG: m.fiberG,
+      sugarG: m.sugarG,
+      calciumMg: m.calciumMg,
+      ironMg: m.ironMg,
+      vitaminCMg: m.vitaminCMg,
+      potassiumMg: m.potassiumMg,
     );
     context.read<AppModel>().addMeal(entry);
     setState(() => _saved = entry);
@@ -254,6 +337,12 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
                           if (_error != null) {
                             _runFirstPass();
                           } else {
+                            // Retake: kill the inline recorder before
+                            // tossing state so we don't leave the mic
+                            // hot on the chooser screen. Voice will
+                            // restart when the next photo is confirmed.
+                            // ignore: discarded_futures
+                            _recorder.stop();
                             setState(() {
                               _image = null;
                               _firstPass = null;
@@ -261,6 +350,7 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
                               _error = null;
                               _followUp.clear();
                               _voiceContext = '';
+                              _voiceMuted = false;
                             });
                           }
                         },
@@ -364,6 +454,16 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
           child: Image.file(_image!,
               height: 260, width: double.infinity, fit: BoxFit.cover),
         ),
+        // Live transcript card sits directly under the photo so the user
+        // sees their own voice landing in real time while the parse runs.
+        // Only shown while the recorder is hot OR while we already have a
+        // captured transcript (post-stop). Hidden once we've saved.
+        if (_saved == null &&
+            (_recorder.isRecording || _voiceContext.isNotEmpty))
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: _voiceCaptureCard(),
+          ),
         const SizedBox(height: 16),
         if (_parsing)
           Row(children: [
@@ -425,6 +525,83 @@ class _MealPhotoSheetState extends State<MealPhotoSheet> {
         else if (_firstPass != null)
           _preCard(_firstPass!),
       ],
+    );
+  }
+
+  /// Live transcript readout. Pulses the eyebrow + dot red while the
+  /// recorder is active; the stop/mute button toggles mic state without
+  /// blocking the photo parse.
+  Widget _voiceCaptureCard() {
+    final live = _recorder.isRecording;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: cardDecoration(
+        fill: Palette.inkSurface,
+        border: live
+            ? Palette.pulse.withOpacity(0.45)
+            : Palette.hairlineStrong,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Eyebrow(live ? 'LIVE TRANSCRIPT' : 'TRANSCRIPT',
+                        color: live ? Palette.pulse : Palette.smoke),
+                    if (live) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                              color: Palette.pulse,
+                              shape: BoxShape.circle)),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _voiceContext.isEmpty
+                      ? (live
+                          ? 'Listening…'
+                          : (_voiceMuted ? 'Mic off.' : 'No voice captured.'))
+                      : _voiceContext,
+                  style: AppType.body(13,
+                      color: _voiceContext.isEmpty
+                          ? Palette.smoke
+                          : Palette.bone),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _toggleVoiceMute,
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: live
+                    ? Palette.pulse.withOpacity(0.18)
+                    : Colors.transparent,
+                border: Border.all(
+                    color: live
+                        ? Palette.pulse
+                        : Palette.hairlineStrong),
+              ),
+              child: Icon(
+                  live ? Icons.stop : Icons.mic,
+                  size: 14,
+                  color: live ? Palette.pulse : Palette.smoke),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

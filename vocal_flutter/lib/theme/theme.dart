@@ -1,31 +1,41 @@
 // Editorial-voice design system — Flutter port of Theme.swift.
-// Dark-first, ink + lime + coral, New York-like serif (Newsreader) display
-// + system body. Every token is opinionated.
+// Dark-first MONOCHROME: ink on bone with pure paper-white as the single
+// emphasis signal. Matches the starfield-on-black logo. New York-like
+// serif (Newsreader) display + system body.
+//
+// Design-language pivot notes:
+//  - `voltage` (lime) and `pulse` (coral) hex constants are PRESERVED so
+//    legacy screen references still compile, but the canonical accent is
+//    now `paper` (pure white). Use `bone` for an over-goal / subtle warn.
+//  - Macros keep their hues — they're the only color in the system and
+//    they map to a tangible thing.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class Palette {
   // Surfaces
-  static const ink = Color(0xFF0A0A0B); // base canvas
+  static const ink = Color(0xFF0A0A0B); // base canvas — deep black
   static const inkRaised = Color(0xFF121214); // first elevation
   static const inkSurface = Color(0xFF18181C); // cards / sheets
   static const inkElevated = Color(0xFF1F1F24); // popovers / chips
-  static final hairline = Colors.white.withOpacity(0.07);
-  static final hairlineStrong = Colors.white.withOpacity(0.13);
+  static const hairline = Color(0xFF1F1E1B); // subtle borders
+  static const hairlineStrong = Color(0xFF2E2D29); // visible borders
 
   // Text
-  static const bone = Color(0xFFF6F4EC); // primary on dark — warm ivory
+  static const paper = Color(0xFFFFFFFF); // pure white — hero numerals & emphasis
+  static const bone = Color(0xFFF5F2EA); // primary on dark — warm off-white
   static const ash = Color(0xFFBDBBB2); // secondary on dark
   static const smoke = Color(0xFF86847B); // tertiary on dark
 
-  // Brand voltage
-  static const voltage = Color(0xFFE5FF59); // lime — the "voice" accent
+  // Legacy accent constants — PRESERVED so screens that still reference
+  // them compile. New work MUST use `paper` for emphasis.
+  static const voltage = Color(0xFFE5FF59); // legacy lime
   static const voltageDeep = Color(0xFFB7D03A);
-  static const pulse = Color(0xFFFF5436); // coral — the "energy" accent
+  static const pulse = Color(0xFFFF5436); // legacy coral
   static const pulseDeep = Color(0xFFE03C1F);
 
-  // Macros
+  // Macros — the only chromatic information in the system.
   static const protein = Color(0xFFFF7A8A); // dusty rose
   static const carbs = Color(0xFFFFD466); // amber
   static const fat = Color(0xFF7BB7FF); // soft sky
@@ -105,14 +115,17 @@ class AppType {
 }
 
 class Gradients {
+  // Monochrome pivot: voltage/pulse keep their NAMES (legacy callers
+  // import them) but render as pure white ramps so the screen reads as
+  // one editorial monochrome surface.
   static const voltage = LinearGradient(
-    colors: [Color(0xFFF6FF80), Palette.voltage, Palette.voltageDeep],
+    colors: [Palette.paper, Palette.paper, Palette.bone],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const pulse = LinearGradient(
-    colors: [Color(0xFFFF8264), Palette.pulse, Palette.pulseDeep],
+    colors: [Palette.paper, Palette.bone, Palette.ash],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -159,14 +172,18 @@ ThemeData buildAppTheme() {
     brightness: Brightness.dark,
     scaffoldBackgroundColor: Palette.ink,
     canvasColor: Palette.ink,
+    // Monochrome pivot: primary and secondary both drive off `paper`.
+    // Material 3 sinks (default buttons, switches, focus rings) inherit
+    // pure white as the accent. Error stays as bone so a thrown SnackBar
+    // doesn't slam coral into the otherwise grayscale surface.
     colorScheme: const ColorScheme.dark(
       surface: Palette.ink,
       onSurface: Palette.bone,
-      primary: Palette.voltage,
+      primary: Palette.paper,
       onPrimary: Palette.ink,
-      secondary: Palette.pulse,
-      onSecondary: Palette.bone,
-      error: Palette.pulse,
+      secondary: Palette.paper,
+      onSecondary: Palette.ink,
+      error: Palette.bone,
     ),
     textTheme: ThemeData.dark().textTheme.apply(
           bodyColor: Palette.bone,
@@ -203,7 +220,8 @@ ThemeData buildAppTheme() {
       filled: false,
       hintStyle: TextStyle(color: Palette.smoke),
       labelStyle: const TextStyle(color: Palette.ash),
-      focusColor: Palette.voltage,
+      // Monochrome pivot: focus color is paper.
+      focusColor: Palette.paper,
     ),
     // Disable Material's "page transition" cross-fade on Android since our
     // shell is in a single Scaffold + custom tab swaps.

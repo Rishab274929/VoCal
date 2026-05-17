@@ -1,6 +1,7 @@
 // Editorial profile — Flutter port of ProfileView.swift.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
@@ -151,14 +152,32 @@ class ProfileView extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                  child: _statTile('Daily kcal', '${p.dailyCalorieGoal}')),
+                  child: _statTile(
+                      context, 'Daily kcal', '${p.dailyCalorieGoal}',
+                      onTap: () => _editKcal(context, p))),
               const SizedBox(width: 10),
               Expanded(
-                  child:
-                      _statTile('Weight', '${p.weightLbs.toInt()} lb')),
+                  child: _statTile(
+                      context, 'Weight', '${p.weightLbs.toInt()} lb',
+                      onTap: () => _editWeight(context, p))),
               const SizedBox(width: 10),
               Expanded(
-                  child: _statTile('Height', _height(p.heightInches))),
+                  child: _statTile(
+                      context, 'Height', _height(p.heightInches),
+                      onTap: () => _editHeight(context, p))),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                  child: _statTile(context, 'Sex', _sexLabel(p.sex),
+                      onTap: () => _editSex(context, p))),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: _statTile(
+                      context, 'Birth year', '${p.birthYear}',
+                      onTap: () => _editBirthYear(context, p))),
             ],
           ),
           const SizedBox(height: 24),
@@ -201,18 +220,275 @@ class ProfileView extends StatelessWidget {
     );
   }
 
-  Widget _statTile(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: cardDecoration(radius: Radii.sm),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Eyebrow(label.toUpperCase()),
-          const SizedBox(height: 6),
-          Text(value, style: AppType.serif(20, weight: FontWeight.w500)),
-        ],
+  String _sexLabel(String sex) {
+    switch (sex) {
+      case 'm':
+        return 'Male';
+      case 'f':
+        return 'Female';
+      default:
+        return '—';
+    }
+  }
+
+  Widget _statTile(BuildContext context, String label, String value,
+      {VoidCallback? onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: cardDecoration(radius: Radii.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Eyebrow(label.toUpperCase()),
+                if (onTap != null) ...[
+                  const Spacer(),
+                  const Icon(Icons.edit,
+                      size: 11, color: Palette.smoke),
+                ],
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(value, style: AppType.serif(20, weight: FontWeight.w500)),
+          ],
+        ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Edit handlers
+  //
+  // Each presents a modal bottom sheet with a single numeric/picker field.
+  // We call appModel.updateProfile((p) => p.field = value) so persistence
+  // + notifyListeners happen exactly once per save.
+  // ---------------------------------------------------------------------
+
+  Future<void> _editKcal(BuildContext context, UserProfile p) async {
+    final app = context.read<AppModel>();
+    final v = await _showNumberEditor(context,
+        title: 'Daily kcal goal',
+        initial: p.dailyCalorieGoal,
+        suffix: 'kcal',
+        // 800 lower bound matches iOS — anything lower is medically
+        // questionable and probably a typo. 6000 upper is a practical
+        // ceiling that still lets bulking lifters log realistic targets.
+        min: 800,
+        max: 6000);
+    if (v == null) return;
+    app.updateProfile((p) => p.dailyCalorieGoal = v);
+  }
+
+  Future<void> _editWeight(BuildContext context, UserProfile p) async {
+    final app = context.read<AppModel>();
+    final v = await _showNumberEditor(context,
+        title: 'Weight',
+        initial: p.weightLbs.toInt(),
+        suffix: 'lb',
+        min: 60,
+        max: 600);
+    if (v == null) return;
+    app.updateProfile((p) => p.weightLbs = v.toDouble());
+  }
+
+  Future<void> _editHeight(BuildContext context, UserProfile p) async {
+    final app = context.read<AppModel>();
+    final v = await _showNumberEditor(context,
+        title: 'Height',
+        initial: p.heightInches.toInt(),
+        suffix: 'inches',
+        min: 36,
+        max: 90);
+    if (v == null) return;
+    app.updateProfile((p) => p.heightInches = v.toDouble());
+  }
+
+  Future<void> _editSex(BuildContext context, UserProfile p) async {
+    final app = context.read<AppModel>();
+    final v = await _showOptionPicker(context,
+        title: 'Sex',
+        initial: p.sex,
+        options: const [
+          ('m', 'Male'),
+          ('f', 'Female'),
+          ('', 'Prefer not to say'),
+        ]);
+    if (v == null) return;
+    app.updateProfile((p) => p.sex = v);
+  }
+
+  Future<void> _editBirthYear(BuildContext context, UserProfile p) async {
+    final app = context.read<AppModel>();
+    final thisYear = DateTime.now().year;
+    final v = await _showNumberEditor(context,
+        title: 'Birth year',
+        initial: p.birthYear,
+        suffix: '',
+        // 13 = COPPA / app-store minimum; thisYear-110 covers the oldest
+        // verified humans alive. Tighter than the iOS slider range but
+        // exactly matches what onboarding accepts on Android.
+        min: 1900,
+        max: thisYear - 13);
+    if (v == null) return;
+    app.updateProfile((p) => p.birthYear = v);
+  }
+
+  Future<int?> _showNumberEditor(BuildContext context,
+      {required String title,
+      required int initial,
+      required String suffix,
+      required int min,
+      required int max}) {
+    final ctrl = TextEditingController(text: '$initial');
+    return showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Palette.ink,
+      builder: (sheetCtx) {
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 22, 28, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Eyebrow(title.toUpperCase(), color: Palette.pulse),
+                  const SizedBox(height: 8),
+                  Text('Edit $title.',
+                      style: AppType.serif(28, weight: FontWeight.w500)),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: false),
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    style: AppType.serif(32, weight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Palette.inkSurface,
+                      suffixText: suffix.isEmpty ? null : suffix,
+                      suffixStyle: AppType.body(13, color: Palette.smoke),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(Radii.sm),
+                        borderSide:
+                            BorderSide(color: Palette.hairlineStrong),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(Radii.sm),
+                        borderSide:
+                            BorderSide(color: Palette.hairlineStrong),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Allowed: $min – $max',
+                      style: AppType.body(11, color: Palette.smoke)),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                          child: GhostButton(
+                              title: 'Cancel',
+                              onTap: () =>
+                                  Navigator.of(sheetCtx).pop(null))),
+                      const SizedBox(width: 12),
+                      Expanded(
+                          child: VoltageButton(
+                        title: 'Save',
+                        icon: Icons.check,
+                        onTap: () {
+                          final v = int.tryParse(ctrl.text.trim());
+                          if (v == null || v < min || v > max) {
+                            // Bad input → keep the sheet open so the user
+                            // can fix it. Cheaper than popping with the
+                            // initial value and silently discarding intent.
+                            return;
+                          }
+                          Navigator.of(sheetCtx).pop(v);
+                        },
+                      )),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _showOptionPicker(BuildContext context,
+      {required String title,
+      required String initial,
+      required List<(String, String)> options}) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Palette.ink,
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 22, 28, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Eyebrow(title.toUpperCase(), color: Palette.pulse),
+                const SizedBox(height: 8),
+                Text('Choose one.',
+                    style: AppType.serif(26, weight: FontWeight.w500)),
+                const SizedBox(height: 18),
+                for (final opt in options)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(sheetCtx).pop(opt.$1),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(Radii.sm),
+                        color: opt.$1 == initial
+                            ? Palette.voltage.withOpacity(0.12)
+                            : Palette.inkSurface,
+                        border: Border.all(
+                            color: opt.$1 == initial
+                                ? Palette.voltage
+                                : Palette.hairlineStrong),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(opt.$2,
+                              style: AppType.body(15,
+                                  weight: FontWeight.w600)),
+                          const Spacer(),
+                          if (opt.$1 == initial)
+                            const Icon(Icons.check,
+                                size: 16, color: Palette.voltage),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                GhostButton(
+                    title: 'Cancel',
+                    onTap: () => Navigator.of(sheetCtx).pop(null)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

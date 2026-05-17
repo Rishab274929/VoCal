@@ -194,6 +194,37 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Replace [original] with [updated] in the meal list and reconcile day
+  /// totals by the macro delta. We match by id (not by reference) so a
+  /// caller can pass a freshly-constructed updated entry without having to
+  /// preserve the original instance handle. If no match is found we no-op
+  /// rather than appending — silently turning an "edit" into an "add"
+  /// would double-count macros.
+  ///
+  /// totals.caloriesEaten is floor-clamped at 0 — an edit that *reduces*
+  /// macros below zero (e.g. the user fixed a wildly-overestimated parse)
+  /// shouldn't leave a negative remainder lingering in the ring.
+  void editMeal(MealEntry original, MealEntry updated) {
+    final idx = meals.indexWhere((m) => m.id == original.id);
+    if (idx < 0) return;
+    int floor0(int v) => v < 0 ? 0 : v;
+    // Compute deltas off the *previous* in-list values (not the caller-
+    // passed `original`) — that's what the totals reflect and using
+    // anything else opens a window where two concurrent edits desync.
+    final prev = meals[idx];
+    totals.caloriesEaten =
+        floor0(totals.caloriesEaten - prev.calories + updated.calories);
+    totals.proteinEaten =
+        floor0(totals.proteinEaten - prev.protein + updated.protein);
+    totals.carbsEaten =
+        floor0(totals.carbsEaten - prev.carbs + updated.carbs);
+    totals.fatEaten = floor0(totals.fatEaten - prev.fat + updated.fat);
+    meals[idx] = updated;
+    DailyMacrosSnapshot.writeFrom(totals);
+    _persist();
+    notifyListeners();
+  }
+
   void addBodyMetric(BodyMetric metric) {
     bodyMetrics.insert(0, metric);
     _persist();
@@ -216,6 +247,26 @@ class AppModel extends ChangeNotifier {
 
   void upgradeToPro() {
     profile.entitlement = Entitlement.pro;
+    _persist();
+    notifyListeners();
+  }
+
+  /// Mutate the profile via a callback. The callback receives the live
+  /// profile object and returns nothing — mutations are picked up via
+  /// notifyListeners after the callback returns. Persists synchronously
+  /// like every other mutator. Keeps the public API tiny (callers don't
+  /// need to know which fields to copy vs which to mutate).
+  ///
+  /// If the daily kcal goal changes, mirror it into `totals.calorieGoal`
+  /// so the Today ring reflects the new target immediately rather than
+  /// waiting for a next-day rollover.
+  void updateProfile(void Function(UserProfile p) mutate) {
+    final prevGoal = profile.dailyCalorieGoal;
+    mutate(profile);
+    if (profile.dailyCalorieGoal != prevGoal) {
+      totals.calorieGoal = profile.dailyCalorieGoal;
+    }
+    DailyMacrosSnapshot.writeFrom(totals);
     _persist();
     notifyListeners();
   }

@@ -12,6 +12,7 @@ import 'services/auth_session.dart';
 import 'services/coach_api.dart';
 import 'services/food_canon.dart';
 import 'services/photo_api.dart';
+import 'services/tts_api.dart';
 import 'state/app_model.dart';
 import 'theme/theme.dart';
 
@@ -61,6 +62,7 @@ Future<void> main() async {
   // from AuthSession's concrete API surface — only main.dart imports both.
   CoachApiAuth.tokenLoader = () => auth.currentToken();
   PhotoApiAuth.tokenLoader = () => auth.currentToken();
+  TtsApiAuth.tokenLoader = () => auth.currentToken();
 
   runApp(
     // Multi-provider so widgets can `context.watch<AuthSession>()` to

@@ -32,6 +32,12 @@ dependencies:
   # pass the WEB OAuth client ID at runtime via
   # --dart-define=GOOGLE_SERVER_CLIENT_ID).
   google_sign_in: ^6.2.1
+  # Coach voice TTS playback — mp3 bytes from /api/coach/voice are written
+  # to a temp file and handed to AudioPlayer via setFilePath(). just_audio
+  # is the same audio engine on both iOS and Android (audioplayers and
+  # flutter_sound have rougher Android paths around lifecycle + focus).
+  # Pinned to 0.9.x: 0.10 raised the minSdk to 23 and we still ship 21.
+  just_audio: ^0.9.40
 
 dev_dependencies:
   flutter_lints: ^4.0.0

@@ -76,7 +76,10 @@ class CalorieRing extends StatelessWidget {
     final over = goal > 0 && eaten > goal;
     final delta = eaten - goal;
     final remaining = over ? delta : (goal - eaten);
-    final tint = over ? Palette.pulse : Palette.voltage;
+    // Monochrome pivot: stroke is paper (pure white) on-track, bone
+    // (warm off-white) when over. The chromatic alarm is gone; the
+    // ring relies on luminance + the center label to signal state.
+    final tint = over ? Palette.bone : Palette.paper;
 
     return SizedBox(
       width: size,
@@ -98,14 +101,14 @@ class CalorieRing extends StatelessWidget {
             children: [
               Text('$remaining',
                   style: AppType.serif(size * 0.32,
-                      weight: FontWeight.w500, color: Palette.bone)),
+                      weight: FontWeight.w500, color: Palette.paper)),
               const SizedBox(height: 6),
               Text(over ? 'KCAL OVER' : 'KCAL LEFT',
                   style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 2.4,
-                      color: over ? Palette.pulse : Palette.smoke)),
+                      color: over ? Palette.bone : Palette.smoke)),
               const SizedBox(height: 8),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -164,18 +167,10 @@ class _RingPainter extends CustomPainter {
     final sweep = progress * 2 * math.pi;
     const start = -math.pi / 2;
 
-    final shader = SweepGradient(
-      startAngle: 0,
-      endAngle: 2 * math.pi,
-      transform: const GradientRotation(-math.pi / 2),
-      colors: [
-        tint.withOpacity(0.6),
-        tint,
-        tint,
-      ],
-    ).createShader(rect);
-
-    // Glow pass
+    // Monochrome pivot: no more SweepGradient; just a single flat,
+    // deliberate stroke. A tiny soft halo keeps the ring from looking
+    // stenciled-flat against pure black — but at 6pt blur, not the
+    // old 12pt chromatic bloom.
     canvas.drawArc(
       rect,
       start,
@@ -185,10 +180,9 @@ class _RingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 10
         ..strokeCap = StrokeCap.round
-        ..color = tint.withOpacity(0.45)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+        ..color = Palette.paper.withOpacity(0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
-    // Main stroke
     canvas.drawArc(
       rect,
       start,
@@ -198,7 +192,7 @@ class _RingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 10
         ..strokeCap = StrokeCap.round
-        ..shader = shader,
+        ..color = tint,
     );
   }
 
@@ -268,16 +262,14 @@ class MacroBar extends StatelessWidget {
                 tween: Tween(begin: 0, end: progress.toDouble()),
                 duration: const Duration(milliseconds: 550),
                 curve: Curves.easeOut,
+                // Monochrome pivot: drop the colored bloom. The macro hue
+                // (tint) itself is the only chroma; no glow.
                 builder: (_, p, __) => Container(
                   height: 4,
                   width: math.max(2.0, c.maxWidth * p),
                   decoration: BoxDecoration(
                     color: tint,
                     borderRadius: BorderRadius.circular(2),
-                    boxShadow: [
-                      BoxShadow(
-                          color: tint.withOpacity(0.4), blurRadius: 6),
-                    ],
                   ),
                 ),
               ),
@@ -344,11 +336,15 @@ class MealCard extends StatelessWidget {
   const MealCard({super.key, required this.meal});
 
   Color get _slotColor {
+    // Monochrome pivot: lunch was lime; now it's pure paper so the
+    // meal-card column reads as part of the type, not branding.
+    // Other slots keep their macro hues (warm amber morning, cool blue
+    // evening) because they carry time-of-day muscle memory.
     switch (meal.slot) {
       case MealSlot.breakfast:
         return Palette.carbs;
       case MealSlot.lunch:
-        return Palette.voltage;
+        return Palette.paper;
       case MealSlot.dinner:
         return Palette.fat;
       case MealSlot.snack:
@@ -508,6 +504,10 @@ class _MicButtonState extends State<MicButton>
               return Stack(
                 alignment: Alignment.center,
                 children: [
+                  // Monochrome pivot: outer pulse + core orb + ticks all
+                  // go from coral to paper. White glow expanding from a
+                  // paper-ringed black orb — the brand statement now
+                  // reads like the starfield logo's bright artifact.
                   Transform.scale(
                     scale: 1 + 0.7 * p,
                     child: Opacity(
@@ -518,7 +518,7 @@ class _MicButtonState extends State<MicButton>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                              color: Palette.pulse.withOpacity(0.55),
+                              color: Palette.paper.withOpacity(0.45),
                               width: 1.5),
                         ),
                       ),
@@ -530,10 +530,10 @@ class _MicButtonState extends State<MicButton>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Palette.ink,
-                      border: Border.all(color: Palette.pulse, width: 2),
+                      border: Border.all(color: Palette.paper, width: 2),
                       boxShadow: [
                         BoxShadow(
-                            color: Palette.pulse.withOpacity(0.4),
+                            color: Palette.paper.withOpacity(0.35),
                             blurRadius: 14),
                       ],
                     ),
@@ -545,7 +545,7 @@ class _MicButtonState extends State<MicButton>
                       painter: _TickPainter(s),
                     ),
                   ),
-                  Icon(Icons.mic, size: s * 0.32, color: Palette.bone),
+                  Icon(Icons.mic, size: s * 0.32, color: Palette.paper),
                 ],
               );
             },
@@ -566,8 +566,9 @@ class _TickPainter extends CustomPainter {
     final r = size * 0.42;
     for (var i = 0; i < 24; i++) {
       final major = i % 3 == 0;
+      // Monochrome pivot: tick marks are paper-tinted.
       final paint = Paint()
-        ..color = Palette.pulse.withOpacity(major ? 0.9 : 0.25)
+        ..color = Palette.paper.withOpacity(major ? 0.85 : 0.22)
         ..strokeWidth = 1;
       final angle = i / 24 * 2 * math.pi;
       final len = major ? size * 0.10 : size * 0.05;
@@ -585,7 +586,10 @@ class _TickPainter extends CustomPainter {
 class WaveformOrb extends StatefulWidget {
   final bool isActive;
   final Color tint;
-  const WaveformOrb({super.key, this.isActive = true, this.tint = Palette.pulse});
+  // Monochrome pivot: default tint to paper. Callers passing an explicit
+  // tint (legacy lime/coral references) still win — intentional, so we
+  // can audit the screens in one follow-up pass.
+  const WaveformOrb({super.key, this.isActive = true, this.tint = Palette.paper});
 
   @override
   State<WaveformOrb> createState() => _WaveformOrbState();
@@ -744,15 +748,18 @@ class VoltageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Monochrome pivot: pure paper-on-ink. Reads like a pressed chiclet
+    // key — high-contrast, no chroma, no glow. Drop shadow is neutral
+    // black so we don't paint chroma into the page.
     final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
       decoration: BoxDecoration(
-        color: Palette.voltage,
+        color: Palette.paper,
         borderRadius: BorderRadius.circular(40),
         boxShadow: [
           BoxShadow(
-              color: Palette.voltage.withOpacity(0.35),
-              blurRadius: 22,
+              color: Colors.black.withOpacity(0.45),
+              blurRadius: 18,
               offset: const Offset(0, 6)),
         ],
       ),
@@ -840,8 +847,10 @@ class StreakBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Monochrome pivot: flame to paper. Keeps the metaphor for
+          // streaks, drops the alarm chroma.
           Icon(Icons.local_fire_department,
-              size: 12, color: Palette.pulse),
+              size: 12, color: Palette.paper),
           const SizedBox(width: 6),
           Text('$days', style: AppType.mono(13, weight: FontWeight.w600)),
           const SizedBox(width: 4),
@@ -867,6 +876,9 @@ class VoCalWordmark extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Monochrome pivot: matches the starfield-on-black brand mark.
+        // "Vo" in bone (warm off-white), "Cal" in pure paper so the
+        // wordmark still has a typographic inflection without color.
         Text('Vo',
             style: AppType.serif(20,
                 weight: FontWeight.w600, italic: true)),
@@ -874,7 +886,7 @@ class VoCalWordmark extends StatelessWidget {
             style: AppType.serif(20,
                 weight: FontWeight.w600,
                 italic: true,
-                color: Palette.voltage)),
+                color: Palette.paper)),
       ],
     );
   }
@@ -890,17 +902,20 @@ class FollowUpQuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Monochrome pivot: eyebrow + card outline both go from coral to
+    // paper. The card stands out by sheer luminance contrast against
+    // the inkRaised surface.
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Palette.inkRaised,
         borderRadius: BorderRadius.circular(Radii.md),
-        border: Border.all(color: Palette.pulse.withOpacity(0.4)),
+        border: Border.all(color: Palette.paper.withOpacity(0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Eyebrow('ONE QUICK CHECK', color: Palette.pulse),
+          const Eyebrow('ONE QUICK CHECK', color: Palette.paper),
           const SizedBox(height: 14),
           Text(question,
               style: AppType.serif(24, weight: FontWeight.w500)),
@@ -935,8 +950,10 @@ class FollowUpQuestionCard extends StatelessWidget {
 class WeightSparkline extends StatelessWidget {
   final List<double> values;
   final Color tint;
+  // Monochrome pivot: default tint is paper. Callers passing an explicit
+  // tint (e.g. directional weight change) still win.
   const WeightSparkline(
-      {super.key, required this.values, this.tint = Palette.voltage});
+      {super.key, required this.values, this.tint = Palette.paper});
 
   @override
   Widget build(BuildContext context) {
@@ -1050,12 +1067,14 @@ class CoachBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = role == CoachRole.user;
+    // Monochrome pivot: user bubble flips from lime to paper. Reads
+    // like an iMessage in the editorial palette — pure white-on-black.
     final bubble = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width - 80),
       decoration: BoxDecoration(
-        color: isUser ? Palette.voltage : Palette.inkSurface,
+        color: isUser ? Palette.paper : Palette.inkSurface,
         borderRadius: BorderRadius.circular(22),
         border: isUser ? null : Border.all(color: Palette.hairline),
       ),
@@ -1071,43 +1090,33 @@ class CoachBubble extends StatelessWidget {
   }
 }
 
-// MARK: - Ambient background
+// MARK: - Ambient background (monochrome — ink with a soft top fade)
 
 class AmbientBackground extends StatelessWidget {
   const AmbientBackground({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Monochrome pivot: dropped the lime + coral radial blobs. A single
+    // very-subtle linear lift at the top keeps the screen from feeling
+    // like a flat black PDF without painting in any hue. Reads as
+    // ambient room light, not branding.
     return Stack(
       children: [
         const Positioned.fill(child: ColoredBox(color: Palette.ink)),
-        Positioned(
-          left: -300,
-          top: -560,
-          child: Container(
-            width: 460,
-            height: 460,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [
-                Palette.voltage.withOpacity(0.10),
-                Palette.voltage.withOpacity(0),
-              ]),
-            ),
-          ),
-        ),
-        Positioned(
-          right: -200,
-          top: -360,
-          child: Container(
-            width: 380,
-            height: 380,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [
-                Palette.pulse.withOpacity(0.06),
-                Palette.pulse.withOpacity(0),
-              ]),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.center,
+                  colors: [
+                    Palette.paper.withOpacity(0.04),
+                    Palette.paper.withOpacity(0),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -1204,16 +1213,18 @@ class EditorialTabBar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Monochrome pivot: active tab is paper, inactive smoke.
+              // No more lime line — the contrast is white vs mid-gray.
               Icon(tab.icon,
                   size: 17,
-                  color: active ? Palette.voltage : Palette.smoke),
+                  color: active ? Palette.paper : Palette.smoke),
               const SizedBox(height: 3),
               Text(tab.label.toUpperCase(),
                   style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1.2,
-                      color: active ? Palette.voltage : Palette.smoke)),
+                      color: active ? Palette.paper : Palette.smoke)),
             ],
           ),
         ),
