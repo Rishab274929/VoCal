@@ -1,4 +1,8 @@
-/* Shared editorial styles for sub-pages */
+/* Shared editorial styles for sub-pages.
+   Strict B&W: ink on bone, with --mic-red as the SOLE chromatic signal
+   (reserved for the microphone affordance). Legacy --voltage / --pulse
+   are repointed to white/bone so any unaudited consumer cascades to
+   monochrome instead of lime / coral. */
 :root {
   color-scheme: dark;
   --ink: #0A0A0B;
@@ -6,11 +10,16 @@
   --ink-surface: #18181C;
   --hairline: rgba(255,255,255,0.07);
   --hairline-strong: rgba(255,255,255,0.13);
+  --paper: #FFFFFF;
   --bone: #F6F4EC;
   --ash: #BDBBB2;
   --smoke: #86847B;
-  --voltage: #E5FF59;
-  --pulse: #FF5436;
+  --mic-red: #E5392C;
+  --mic-red-deep: #B02418;
+  /* Legacy aliases — keep the names so HTML still works, but they no
+     longer carry hue. Update call sites to --paper / --bone over time. */
+  --voltage: var(--paper);
+  --pulse: var(--paper);
 }
 * { box-sizing: border-box; }
 html, body {
@@ -25,8 +34,8 @@ body::before {
   content: "";
   position: fixed; inset: 0;
   background:
-    radial-gradient(circle at 15% -10%, rgba(229,255,89,0.10) 0%, transparent 40%),
-    radial-gradient(circle at 90% 5%, rgba(255,84,54,0.06) 0%, transparent 35%);
+    radial-gradient(circle at 15% -10%, rgba(255,255,255,0.05) 0%, transparent 40%),
+    radial-gradient(circle at 90% 5%, rgba(255,255,255,0.03) 0%, transparent 35%);
   pointer-events: none;
   z-index: 0;
 }
@@ -41,16 +50,16 @@ header {
   font-style: italic; font-weight: 600; font-size: 20px;
 }
 .wordmark .vo { color: var(--bone); }
-.wordmark .cal { color: var(--voltage); }
+.wordmark .cal { color: var(--paper); }
 header a { font-size: 13px; color: var(--ash); text-decoration: none; }
-header a:hover { color: var(--voltage); }
+header a:hover { color: var(--paper); }
 main { max-width: 720px; margin: 0 auto; padding: 24px 32px 80px; }
 .eyebrow {
   font-size: 10px; font-weight: 600;
   letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--smoke);
 }
-.eyebrow-pulse { color: var(--pulse); }
+.eyebrow-pulse { color: var(--bone); }
 h1 {
   font-family: "New York", "Charter", Georgia, serif;
   font-weight: 500;
@@ -71,8 +80,8 @@ p, li {
   line-height: 1.6;
 }
 strong { color: var(--bone); }
-a { color: var(--voltage); }
-a:hover { color: var(--bone); }
+a { color: var(--paper); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
+a:hover { color: var(--bone); text-decoration-color: var(--bone); }
 .card {
   margin: 24px 0;
   padding: 22px;
@@ -84,7 +93,7 @@ a:hover { color: var(--bone); }
   display: inline-flex; align-items: center; gap: 6px;
   padding: 12px 22px;
   border-radius: 999px;
-  background: var(--voltage);
+  background: var(--paper);
   color: var(--ink) !important;
   font-weight: 600; font-size: 13px;
   text-decoration: none;
@@ -100,6 +109,6 @@ footer {
   font-size: 12px; color: var(--smoke);
 }
 footer a { color: var(--ash); margin-left: 16px; text-decoration: none; }
-footer a:hover { color: var(--voltage); }
+footer a:hover { color: var(--paper); }
 .small { font-size: 12px; color: var(--smoke); margin-top: 8px; }
 hr { border: none; border-top: 1px solid var(--hairline); margin: 28px 0; }
