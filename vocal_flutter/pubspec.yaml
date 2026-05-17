@@ -38,6 +38,10 @@ dependencies:
   # flutter_sound have rougher Android paths around lifecycle + focus).
   # Pinned to 0.9.x: 0.10 raised the minSdk to 23 and we still ship 21.
   just_audio: ^0.9.40
+  # Manage-subscriptions deep link from Profile → Play Store account
+  # subscription page (no iOS-style .manageSubscriptionsSheet, so we
+  # open https://play.google.com/store/account/subscriptions instead).
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_lints: ^4.0.0

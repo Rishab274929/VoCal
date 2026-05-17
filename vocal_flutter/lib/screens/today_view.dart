@@ -12,13 +12,15 @@ import '../widgets/components.dart';
 
 class TodayView extends StatelessWidget {
   final VoidCallback onShowVoice;
-  final VoidCallback onShowPhoto;
-  final VoidCallback onShowBarcode;
+  /// Single unified camera entry point — covers both still-frame meal
+  /// photos AND live barcode scanning in one sheet. iOS commit
+  /// collapsed the separate photo + barcode buttons into one for the
+  /// same reason (the user-intent is "log what's in front of me").
+  final VoidCallback onShowUnifiedCamera;
   const TodayView(
       {super.key,
       required this.onShowVoice,
-      required this.onShowPhoto,
-      required this.onShowBarcode});
+      required this.onShowUnifiedCamera});
 
   String _greeting(String name) {
     final h = DateTime.now().hour;
@@ -58,21 +60,7 @@ class TodayView extends StatelessWidget {
               const VoCalWordmark(),
               const Spacer(),
               GestureDetector(
-                onTap: onShowBarcode,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Palette.hairlineStrong),
-                  ),
-                  child: const Icon(Icons.qr_code_scanner,
-                      size: 14, color: Palette.bone),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: onShowPhoto,
+                onTap: onShowUnifiedCamera,
                 child: Container(
                   width: 32,
                   height: 32,
@@ -117,35 +105,60 @@ class TodayView extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.lg),
 
-          // ring block
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: cardDecoration(radius: Radii.lg),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CalorieRing(
-                    eaten: t.caloriesEaten, goal: t.calorieGoal, size: 168),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          // ring block — entire card is a tap target that opens the
+          // unified camera. Subtle camera glyph at the ring's edge
+          // signals tap-to-log. iOS parity: ring-as-tap-target landed
+          // alongside the unified camera so the rich primary surface
+          // becomes the dominant logging entry point.
+          GestureDetector(
+            onTap: onShowUnifiedCamera,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: cardDecoration(radius: Radii.lg),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    alignment: Alignment.bottomRight,
                     children: [
-                      _statColumn('EATEN', t.caloriesEaten, Palette.bone),
-                      _hr(),
-                      _statColumn('GOAL', t.calorieGoal, Palette.ash),
-                      _hr(),
-                      // Match iOS: column label is REMAINING, not DEFICIT
-                      _statColumn(
-                          'REMAINING',
-                          (t.calorieGoal - t.caloriesEaten) < 0
-                              ? 0
-                              : t.calorieGoal - t.caloriesEaten,
-                          Palette.voltage),
+                      CalorieRing(
+                          eaten: t.caloriesEaten,
+                          goal: t.calorieGoal,
+                          size: 168),
+                      Container(
+                        margin: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Palette.inkSurface,
+                          border: Border.all(color: Palette.hairlineStrong),
+                        ),
+                        child: const Icon(Icons.camera_alt,
+                            size: 12, color: Palette.bone),
+                      ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _statColumn('EATEN', t.caloriesEaten, Palette.bone),
+                        _hr(),
+                        _statColumn('GOAL', t.calorieGoal, Palette.ash),
+                        _hr(),
+                        _statColumn(
+                            'REMAINING',
+                            (t.calorieGoal - t.caloriesEaten) < 0
+                                ? 0
+                                : t.calorieGoal - t.caloriesEaten,
+                            Palette.voltage),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: Spacing.lg),

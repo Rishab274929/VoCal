@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../data/mock_data.dart';
 import '../sheets/bodyfat_photo_sheet.dart';
+import '../sheets/weight_entry_sheet.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -146,61 +147,79 @@ class ProgressScreen extends StatelessWidget {
           ),
           const SizedBox(height: Spacing.lg),
 
-          // weight card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: cardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Eyebrow('WEIGHT'),
-                        const SizedBox(height: 2),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(curW.toStringAsFixed(1),
-                                style: AppType.serif(32,
-                                    weight: FontWeight.w500)),
-                            const SizedBox(width: 6),
-                            Text('lb',
-                                style: AppType.body(13,
-                                    color: Palette.smoke)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(_delta(dW, 'lb'),
-                            style: AppType.body(12,
-                                weight: FontWeight.w600,
-                                color: dW < 0
-                                    ? Palette.voltage
-                                    : Palette.pulse)),
-                        const SizedBox(height: 4),
-                        Text('vs 4 weeks ago',
-                            style: AppType.body(10, color: Palette.smoke)),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  height: 88,
-                  child: WeightSparkline(
-                      values: weights.isEmpty ? [curW, curW] : weights,
-                      tint: Palette.voltage),
-                ),
-              ],
+          // weight card — tap-to-log mirrors iOS HistoryView wave4:
+          // the hero number itself is a tap target that opens
+          // WeightEntrySheet, bypassing the body-fat photo flow for
+          // users who just want to record a scale weight. Small pencil
+          // glyph signals "editable"; dedicated Log button stays as the
+          // non-discoverable fallback.
+          GestureDetector(
+            onTap: () => showWeightEntrySheet(context),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: cardDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Eyebrow('WEIGHT'),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.edit,
+                                  size: 11, color: Palette.smoke),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(curW.toStringAsFixed(1),
+                                  style: AppType.serif(32,
+                                      weight: FontWeight.w500)),
+                              const SizedBox(width: 6),
+                              Text('lb',
+                                  style: AppType.body(13,
+                                      color: Palette.smoke)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(_delta(dW, 'lb'),
+                              style: AppType.body(12,
+                                  weight: FontWeight.w600,
+                                  color: dW < 0
+                                      ? Palette.voltage
+                                      : Palette.pulse)),
+                          const SizedBox(height: 4),
+                          Text('vs 4 weeks ago',
+                              style:
+                                  AppType.body(10, color: Palette.smoke)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: 88,
+                    child: WeightSparkline(
+                        values: weights.isEmpty ? [curW, curW] : weights,
+                        tint: Palette.voltage),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: Spacing.lg),

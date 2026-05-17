@@ -290,6 +290,24 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Hard reset after sign-out. Clears in-memory meals/body/coach/profile
+  /// back to fresh-install defaults so screens redraw immediately
+  /// instead of waiting for the next mutation. The on-disk snapshot is
+  /// wiped separately by AuthSession.signOut(clearLocalData: true).
+  void resetAfterSignOut() {
+    final empty = AppStateSnapshot.empty();
+    totals = empty.totals;
+    meals.clear();
+    profile = empty.profile;
+    bodyMetrics.clear();
+    coachMessages.clear();
+    hasCompletedOnboarding = false;
+    lastSavedMeal = null;
+    DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
+    notifyListeners();
+  }
+
   // ---------------------------------------------------------------------------
   // Free-tier voice cap
   //

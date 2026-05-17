@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
+import '../services/auth_session.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -186,10 +188,10 @@ class ProfileView extends StatelessWidget {
             decoration: cardDecoration(),
             child: Column(
               children: [
-                _settingRow(Icons.favorite, 'Apple Health', 'Connect',
+                _settingRow(Icons.favorite, 'Health Connect', 'Connect',
                     Palette.pulse),
                 _divider(),
-                _settingRow(Icons.watch, 'Apple Watch', 'Connect',
+                _settingRow(Icons.watch, 'Wear OS', 'Connect',
                     Palette.fat),
                 _divider(),
                 _settingRow(Icons.notifications, 'Reminders', '3× daily',
@@ -205,6 +207,14 @@ class ProfileView extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
+          // Account card — Sign Out + Manage Subscriptions. iOS
+          // ProfileView wave4 adds these as required by App Store
+          // 5.1.1(v) (sign-out confirm) and 3.1.2 (subscription
+          // management surface). Android equivalent: confirm dialog +
+          // Play Store deep link.
+          _accountCard(context),
+          const SizedBox(height: 24),
+
           Center(
             child: Column(
               children: [
@@ -218,6 +228,134 @@ class ProfileView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _accountCard(BuildContext context) {
+    return Container(
+      decoration: cardDecoration(),
+      child: Column(
+        children: [
+          _accountRow(
+            context,
+            icon: Icons.subscriptions_outlined,
+            title: 'Manage Subscription',
+            subtitle: 'Opens Google Play subscription settings.',
+            onTap: () => _openPlayStoreSubscriptions(context),
+          ),
+          _divider(),
+          _accountRow(
+            context,
+            icon: Icons.logout,
+            title: 'Sign Out',
+            subtitle: 'Clears the local session and meal history.',
+            onTap: () => _confirmSignOut(context),
+            destructive: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _accountRow(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool destructive = false,
+  }) {
+    final tint = destructive ? Palette.pulse : Palette.bone;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: tint),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: AppType.body(14,
+                          weight: FontWeight.w600, color: tint)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: AppType.body(11, color: Palette.smoke)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 16, color: Palette.smoke),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPlayStoreSubscriptions(BuildContext context) async {
+    // Deep link to Google Play's per-package subscription page.
+    // Falls back to the in-app browser if the Play Store app isn't
+    // installed (rare on real hardware, common on emulators).
+    final uri = Uri.parse(
+        'https://play.google.com/store/account/subscriptions?package=best.vocal.vocal');
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: Palette.inkSurface,
+          content: Text(
+              "Couldn't open Play Store. Manage via Play Store > Profile > Subscriptions.",
+              style: AppType.body(13, color: Palette.bone)),
+        ));
+      }
+    } catch (_) {
+      // Swallow — best-effort surface, never crash the screen.
+    }
+  }
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Palette.inkSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+          ),
+          title: Text('Sign out?',
+              style: AppType.serif(20, weight: FontWeight.w500)),
+          content: Text(
+            'You\'ll be signed out of VoCal on this device. Local meal '
+            'history and profile will be cleared.',
+            style: AppType.body(13, color: Palette.ash),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child:
+                  Text('Cancel', style: AppType.body(13, color: Palette.bone)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text('Sign out',
+                  style: AppType.body(13,
+                      color: Palette.pulse, weight: FontWeight.w600)),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirm != true || !context.mounted) return;
+    final auth = context.read<AuthSession>();
+    await auth.signOut(clearLocalData: true);
+    if (!context.mounted) return;
+    // Drop the in-memory state to fresh-install defaults so the screen
+    // (and the RootView gate) re-renders immediately to onboarding.
+    context.read<AppModel>().resetAfterSignOut();
   }
 
   String _sexLabel(String sex) {

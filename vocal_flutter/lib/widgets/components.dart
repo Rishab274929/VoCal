@@ -1178,11 +1178,16 @@ class EditorialTabBar extends StatelessWidget {
   final AppTab selection;
   final ValueChanged<AppTab> onSelect;
   final VoidCallback onMic;
+  /// Optional long-press on the mic — opens the add-picker chooser
+  /// (photo / saved foods / food database). Mirrors iOS
+  /// EditorialTabBar.onAdd. When null, long-press is a no-op.
+  final VoidCallback? onAdd;
   const EditorialTabBar({
     super.key,
     required this.selection,
     required this.onSelect,
     required this.onMic,
+    this.onAdd,
   });
 
   @override
@@ -1204,12 +1209,16 @@ class EditorialTabBar extends StatelessWidget {
           _tab(AppTab.progress),
           // Mic sits INLINE in the center slot. Width matches iOS (86) and
           // a small negative top padding keeps the larger circle visually
-          // centered with the smaller tab icons.
+          // centered with the smaller tab icons. Long-press opens the
+          // add-picker chooser (iOS wave4 EditorialTabBar.onAdd).
           SizedBox(
             width: 86,
             child: Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: MicButton(onTap: onMic, size: 52),
+              child: GestureDetector(
+                onLongPress: onAdd,
+                child: MicButton(onTap: onMic, size: 52),
+              ),
             ),
           ),
           _tab(AppTab.coach),
