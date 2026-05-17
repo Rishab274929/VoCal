@@ -13,6 +13,8 @@ struct ProfileView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var showingPaywall: Bool
 
+    @ObservedObject private var store = StoreKitStore.shared
+
     /// Which profile field the user tapped on. Drives the editor sheet;
     /// nil means no sheet is currently showing.
     @State private var editingField: ProfileField?
@@ -33,6 +35,7 @@ struct ProfileView: View {
     /// sign-out. We default `clearLocalData: true` because the most common
     /// case is "different person picking up the device".
     @State private var showingSignOutConfirm = false
+    @State private var refreshingPurchases = false
 
     /// Lightweight identifiable wrapper so `.alert(item:)` can render
     /// different copy per row. Title doubles as the alert ID.
@@ -373,6 +376,19 @@ struct ProfileView: View {
                     message: "Voice transcripts and photos are processed on-device whenever possible. Network calls (recipe parsing, AI coach) only send the minimum needed and never raw audio.",
                     openSettings: false
                 )
+            }
+            divider
+            settingRow(
+                icon: "arrow.trianglehead.2.clockwise",
+                title: "Refresh Purchases",
+                detail: refreshingPurchases ? "Syncing…" : (store.hasPro ? "Pro active" : "Tap to sync"),
+                tint: Theme.Palette.voltage
+            ) {
+                Task {
+                    refreshingPurchases = true
+                    await store.restore()
+                    refreshingPurchases = false
+                }
             }
         }
         .background(

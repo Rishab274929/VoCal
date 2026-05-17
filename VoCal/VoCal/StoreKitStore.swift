@@ -258,26 +258,21 @@ final class StoreKitStore: ObservableObject {
         }
         lastServerSyncAttemptAt = now
 
-        guard let receiptURL = Bundle.main.appStoreReceiptURL else {
-            if surfaceErrors {
-                lastError = "App Store receipt unavailable. Restore purchases and try again."
+        // StoreKit 2 path: get the signed JWS transaction directly from
+        // Transaction.currentEntitlements. This replaces the legacy
+        // Bundle.main.appStoreReceiptURL which is unavailable in many
+        // StoreKit 2 / TestFlight configurations.
+        var signedJWS: String?
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let txn) = result, Self.productIDs.contains(txn.productID) {
+                signedJWS = result.jwsRepresentation
+                break
             }
-            return false
         }
 
-        let receiptData: Data
-        do {
-            receiptData = try Data(contentsOf: receiptURL)
-        } catch {
+        guard let jws = signedJWS else {
             if surfaceErrors {
-                lastError = "App Store receipt unavailable. Restore purchases and try again."
-            }
-            return false
-        }
-
-        guard !receiptData.isEmpty else {
-            if surfaceErrors {
-                lastError = "App Store receipt is empty. Restore purchases and try again."
+                lastError = "No active subscription transaction found. Restore purchases and try again."
             }
             return false
         }
@@ -293,7 +288,7 @@ final class StoreKitStore: ObservableObject {
         req.timeoutInterval = 20
         await AuthSession.shared.authorize(&req)
         req.httpBody = try? JSONEncoder().encode([
-            "receipt_data": receiptData.base64EncodedString()
+            "signed_transaction": jws
         ])
 
         do {
@@ -338,10 +333,32 @@ final class StoreKitStore: ObservableObject {
     private func handle(verificationResult: VerificationResult<Transaction>) async -> Bool {
         switch verificationResult {
         case .verified(let txn):
+            let ownsActivePro =
+                Self.productIDs.contains(txn.productID)
+                && txn.revocationDate == nil
+                && !txn.isUpgraded
+                && (txn.expirationDate == nil || txn.expirationDate! > Date())
+
+            if ownsActivePro {
+                // The just-returned transaction is already verified by
+                // StoreKit, so flip local UI immediately. Waiting for
+                // Transaction.currentEntitlements can lag by a few seconds,
+                // which made the paywall look inert after Apple's sheet
+                // completed.
+                hasPro = true
+                UserDefaults.standard.set(true, forKey: Self.entitlementCacheKey)
+            }
+
             // Finish the transaction so Apple stops re-delivering it on launch.
             await txn.finish()
+
+            if ownsActivePro {
+                await syncServerEntitlement(force: true, surfaceErrors: true)
+                return true
+            }
+
             await refreshEntitlement(forceServerSync: true, surfaceSyncErrors: true)
-            return Self.productIDs.contains(txn.productID)
+            return false
         case .unverified(_, let error):
             // SECURITY: never grant entitlement on an unverified transaction.
             // The JWS signature check is our only defense against a tampered

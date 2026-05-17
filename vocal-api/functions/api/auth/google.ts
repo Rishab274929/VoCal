@@ -92,6 +92,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   let idToken = body.id_token?.trim();
   const authCode = body.authorization_code?.trim();
+  let usedAuthorizationCodeFlow = false;
   if (!idToken) {
     if (!authCode) return json({ error: "authorization_code or id_token required" }, 400);
     const codeVerifier = body.code_verifier?.trim();
@@ -130,6 +131,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
     idToken = tokenBody.id_token?.trim();
     if (!idToken) return json({ error: "Google token response missing id_token" }, 401);
+    usedAuthorizationCodeFlow = true;
   }
 
   // --- Verify with Google ---
@@ -166,7 +168,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const expectedNonce = body.nonce?.trim();
   if (expectedNonce) {
     const payload = decodeIDTokenPayload(idToken);
-    if (!payload?.nonce || !constantTimeEqual(payload.nonce, expectedNonce)) {
+    if (payload?.nonce && !constantTimeEqual(payload.nonce, expectedNonce)) {
+      return json({ error: "nonce mismatch" }, 401);
+    }
+    // Google's installed-app code+PKCE flow is bound by the verifier and may
+    // omit `nonce` from the token endpoint's ID token. Keep requiring nonce
+    // only for direct id_token clients, where the app itself received the
+    // token from the browser redirect.
+    if (!payload?.nonce && !usedAuthorizationCodeFlow) {
       return json({ error: "nonce mismatch" }, 401);
     }
   }

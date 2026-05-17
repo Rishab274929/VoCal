@@ -220,7 +220,6 @@ struct OnboardingFlow: View {
             }
             do {
                 try await AuthSession.shared.completeSignInWithApple(credential: cred)
-                signInError = nil
                 // Pre-fill the name field if SiwA gave us one on first sign-in.
                 // After the first sign-in Apple returns nil for fullName even
                 // on the same Apple ID, so this only fires once per account.
@@ -230,6 +229,7 @@ struct OnboardingFlow: View {
                         name = f
                     }
                 }
+                continueAfterSuccessfulSignIn()
             } catch {
                 signInError = error.localizedDescription
             }
@@ -284,15 +284,23 @@ struct OnboardingFlow: View {
         defer { signingIn = false }
         do {
             try await AuthSession.shared.signInWithGoogle()
-            signInError = nil
             // Pre-fill the name field if Google gave us one — saves a step.
             if let displayName = AuthSession.shared.displayName, name.isEmpty {
                 name = displayName.split(separator: " ").first.map(String.init) ?? displayName
             }
+            continueAfterSuccessfulSignIn()
         } catch GoogleSignIn.Error.userCancelled {
             // No-op — user dismissed the sheet.
         } catch {
             signInError = error.localizedDescription
+        }
+    }
+
+    private func continueAfterSuccessfulSignIn() {
+        signInError = nil
+        guard step == .pitch else { return }
+        withAnimation(.spring) {
+            step = .name
         }
     }
 

@@ -40,9 +40,10 @@
 //       User authenticates with Face ID / Touch ID / passcode + chooses
 //       whether to share their real email or a private relay email.
 //    3. On success we get back: identity_token (signed JWT from Apple),
-//       authorization_code (short-lived, server can exchange for refresh
-//       token), user_id (stable across reinstalls on the same Apple ID),
-//       and — first time only — full_name + email.
+//       an optional authorization_code (short-lived, server can exchange
+//       for refresh token if it ever needs to), user_id (stable across
+//       reinstalls on the same Apple ID), and — first time only —
+//       full_name + email.
 //    4. POST all of that to /api/auth/apple. Backend verifies the JWS
 //       against Apple's published JWKS, optionally exchanges the auth
 //       code with Apple's token endpoint, and returns our own JWT.
@@ -71,7 +72,6 @@ final class AppleSignIn: NSObject, ObservableObject {
     enum Error: Swift.Error, LocalizedError {
         case userCancelled
         case noIdentityToken
-        case missingAuthorizationCode
         case backend(String)
         case underlying(Swift.Error)
 
@@ -79,7 +79,6 @@ final class AppleSignIn: NSObject, ObservableObject {
             switch self {
             case .userCancelled:           "Sign-in cancelled."
             case .noIdentityToken:         "Apple didn't return an identity token."
-            case .missingAuthorizationCode: "Apple didn't return an authorization code."
             case .backend(let m):           m
             case .underlying(let e):        e.localizedDescription
             }
@@ -175,10 +174,9 @@ final class AppleSignIn: NSObject, ObservableObject {
               let identityToken = String(data: identityTokenData, encoding: .utf8) else {
             throw Error.noIdentityToken
         }
-        guard let authorizationCodeData = credential.authorizationCode,
-              let authorizationCode = String(data: authorizationCodeData, encoding: .utf8) else {
-            throw Error.missingAuthorizationCode
-        }
+        let authorizationCode = credential.authorizationCode
+            .flatMap { String(data: $0, encoding: .utf8) }
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         guard let rawNonce = currentRawNonce else {
             throw Error.backend("Apple sign-in nonce was not prepared. Try again.")
         }
@@ -186,10 +184,16 @@ final class AppleSignIn: NSObject, ObservableObject {
 
         // full_name + email are nil on every sign-in AFTER the first.
         // Server is responsible for persisting them on first contact.
-        let fullName: String?
+        let fullName: [String: String]?
         if let pn = credential.fullName {
-            let parts = [pn.givenName, pn.familyName].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            fullName = parts.isEmpty ? nil : parts.joined(separator: " ")
+            var name: [String: String] = [:]
+            if let given = pn.givenName?.trimmingCharacters(in: .whitespaces), !given.isEmpty {
+                name["given"] = given
+            }
+            if let family = pn.familyName?.trimmingCharacters(in: .whitespaces), !family.isEmpty {
+                name["family"] = family
+            }
+            fullName = name.isEmpty ? nil : name
         } else {
             fullName = nil
         }
@@ -222,10 +226,10 @@ final class AppleSignIn: NSObject, ObservableObject {
 
     private func exchangeWithBackend(
         identityToken: String,
-        authorizationCode: String,
+        authorizationCode: String?,
         nonce: String,
         userID: String,
-        fullName: String?,
+        fullName: [String: String]?,
         email: String?,
         linkAnonymousUserID: String?,
         linkAnonymousToken: String?
@@ -244,10 +248,10 @@ final class AppleSignIn: NSObject, ObservableObject {
         // an absent key).
         var payload: [String: Any] = [
             "identity_token": identityToken,
-            "authorization_code": authorizationCode,
             "nonce": nonce,
             "user_id": userID
         ]
+        if let authorizationCode = authorizationCode { payload["authorization_code"] = authorizationCode }
         if let fullName  = fullName  { payload["full_name"] = fullName }
         if let email     = email     { payload["email"] = email }
         if let uid       = linkAnonymousUserID { payload["link_anonymous_user_id"] = uid }

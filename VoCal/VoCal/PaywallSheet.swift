@@ -28,6 +28,7 @@ struct PaywallSheet: View {
 
     @State private var plan: StoreKitStore.Plan = .annual
     @State private var restoring = false
+    @State private var didCompleteSubscription = false
 
     var body: some View {
         ZStack {
@@ -296,7 +297,10 @@ struct PaywallSheet: View {
             await store.loadProducts()
             // Catch any pending purchases from a prior session whose verification
             // arrived between launch and the user opening the paywall.
-            await store.refreshEntitlement()
+            let hasPro = await store.refreshEntitlement()
+            if hasPro {
+                completeSubscriptionIfNeeded()
+            }
         }
         .onChange(of: store.hasPro) { _, hasPro in
             // Mirror the StoreKit truth into the AppModel either direction.
@@ -304,11 +308,7 @@ struct PaywallSheet: View {
             // family-share revoked) while paywall is open: revoke locally so
             // the gated UI re-engages on next paint.
             if hasPro {
-                if appModel.profile.entitlement != .pro {
-                    appModel.upgradeToPro()
-                }
-                onSubscribe?()
-                if onSubscribe == nil { dismiss() }
+                completeSubscriptionIfNeeded()
             } else if appModel.profile.entitlement == .pro {
                 // Refund / family-share revoke / expired and not renewed.
                 // Direct mutation on the @Published profile; persist() runs
@@ -324,8 +324,20 @@ struct PaywallSheet: View {
     private func purchase() async {
         let succeeded = await store.purchase(plan)
         if succeeded {
-            // The hasPro onChange handler above will fire and trigger
-            // upgrade + dismiss.
+            completeSubscriptionIfNeeded()
+        }
+    }
+
+    private func completeSubscriptionIfNeeded() {
+        guard !didCompleteSubscription else { return }
+        didCompleteSubscription = true
+        if appModel.profile.entitlement != .pro {
+            appModel.upgradeToPro()
+        }
+        if let onSubscribe {
+            onSubscribe()
+        } else {
+            dismiss()
         }
     }
 
