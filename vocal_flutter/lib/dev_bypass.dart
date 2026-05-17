@@ -1,19 +1,21 @@
-// Flip `enabled` to false before Play Store submission. When true, the
-// app shows "Skip" buttons in Onboarding and PaywallSheet that grant
-// Pro entitlement locally without auth or StoreKit. Mirrors the iOS
-// DevBypass shim — same field names, same defaults.
+// Flip `enabled` to true in DEBUG builds to expose "Skip" affordances in
+// Onboarding and PaywallSheet that grant Pro entitlement locally without
+// auth or StoreKit. Mirrors the iOS DevBypass #if DEBUG guard —
+// Release/Profile builds always ship with `enabled = false` so a
+// hackathon demo affordance can't leak into the Play Store APK.
 //
 // IMPORTANT: this is a demo / hackathon affordance, NOT a runtime feature
-// flag. Toggling it requires a rebuild; there is no remote kill-switch.
-// Production releases MUST ship with `enabled = false`.
+// flag. There is no remote kill-switch.
+
+import 'package:flutter/foundation.dart';
 
 import 'models/models.dart';
 
 class DevBypass {
-  /// Master switch — wraps every Skip CTA in the UI. Set false before
-  /// submitting to the Play Store; the constness lets Dart's tree-shaker
-  /// strip the Skip buttons from the release bundle.
-  static const bool enabled = true;
+  /// Master switch — wraps every Skip CTA in the UI. `kReleaseMode` is
+  /// const, so the Dart tree-shaker can strip Skip buttons from the
+  /// release bundle entirely; in debug we keep them visible.
+  static const bool enabled = !kReleaseMode;
 
   /// Default Pro profile used when the user taps Skip. Values mirror the
   /// iOS DevBypass.defaultProfile() so a demo built on either platform

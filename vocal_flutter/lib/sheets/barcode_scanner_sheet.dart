@@ -18,17 +18,14 @@
 //     (mobile_scanner handles the OS prompt internally; we just react)
 
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
-import '../services/voice_api.dart';
+import '../services/barcode_api.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
 import '../widgets/components.dart';
@@ -166,14 +163,14 @@ class _BarcodeScannerSheetState extends State<BarcodeScannerSheet>
       _errorMessage = null;
     });
     try {
-      final result = await _BarcodeApi.lookup(code);
+      final result = await BarcodeApi.lookup(code);
       if (!mounted) return;
       setState(() {
         _resolvedMeal = result.meal;
         _resolvedSource = result.source;
         _phase = _ScanPhase.resolved;
       });
-    } on _BarcodeNotFound {
+    } on BarcodeApiNotFound {
       if (!mounted) return;
       setState(() {
         _errorMessage =
@@ -572,67 +569,6 @@ class _BarcodeScannerSheetState extends State<BarcodeScannerSheet>
         ),
       ],
     );
-  }
-}
-
-// MARK: - Backend client
-//
-// Mirrors iOS BarcodeAPI.swift but trims the OFF direct-from-client fallback
-// because the Cloudflare Worker already proxies USDA Branded + OFF on the
-// server side. If the worker 404s, the client treats it as definitive — we
-// don't have the User-Agent allow-list relationship with OFF that the iOS
-// path leans on.
-
-class _BarcodeResult {
-  final ParsedMeal meal;
-  final String source;
-  _BarcodeResult(this.meal, this.source);
-}
-
-class _BarcodeNotFound implements Exception {}
-
-class _BarcodeApi {
-  /// 8s timeout — matches iOS BarcodeAPI URLRequest.timeoutInterval = 8.
-  static const Duration _timeout = Duration(seconds: 8);
-
-  static Future<_BarcodeResult> lookup(String code) async {
-    // Normalize defensively in case a caller skipped the digit gate (the
-    // backend will 400 on garbage anyway, but a local check is cheaper).
-    final digits = code.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 8 || digits.length > 14) {
-      throw _BarcodeNotFound();
-    }
-    final uri = Uri.parse('${ApiConfig.baseUrl}/barcode/$digits');
-    final http.Response res;
-    try {
-      res = await http.get(uri).timeout(_timeout);
-    } on TimeoutException {
-      throw Exception('Request timed out');
-    } on SocketException catch (e) {
-      throw Exception('Network unavailable: ${e.message}');
-    } on http.ClientException catch (e) {
-      throw Exception('HTTP client error: ${e.message}');
-    }
-    if (res.statusCode == 404) throw _BarcodeNotFound();
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Bad server response (${res.statusCode})');
-    }
-    try {
-      final decoded = jsonDecode(res.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('Malformed server response');
-      }
-      // Backend shape: { meal: ParsedMeal, source: string }
-      final mealJson = decoded['meal'];
-      if (mealJson is! Map<String, dynamic>) {
-        throw _BarcodeNotFound();
-      }
-      final meal = ParsedMeal.fromJson(mealJson);
-      final source = (decoded['source'] as String?) ?? 'backend';
-      return _BarcodeResult(meal, source);
-    } on FormatException catch (e) {
-      throw Exception('Malformed server response: ${e.message}');
-    }
   }
 }
 

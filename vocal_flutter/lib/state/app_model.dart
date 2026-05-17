@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../services/auth_session.dart';
 import '../services/persistence.dart';
+import '../services/widget_bridge.dart';
 
 class AppModel extends ChangeNotifier {
   DailyTotals totals;
@@ -70,6 +71,7 @@ class AppModel extends ChangeNotifier {
         bodyMetrics = List.of(bodyMetrics),
         coachMessages = List.of(coachMessages) {
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
   }
 
   factory AppModel.fromSnapshot(AppStateSnapshot s) => AppModel(
@@ -127,6 +129,7 @@ class AppModel extends ChangeNotifier {
     totals.carbsEaten = 0;
     totals.fatEaten = 0;
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
     return true;
@@ -176,6 +179,7 @@ class AppModel extends ChangeNotifier {
     lastSavedMeal = meal;
     _lastAddMealAt = now;
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
   }
@@ -190,6 +194,7 @@ class AppModel extends ChangeNotifier {
     totals.carbsEaten = floor0(totals.carbsEaten - meal.carbs);
     totals.fatEaten = floor0(totals.fatEaten - meal.fat);
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
   }
@@ -221,6 +226,7 @@ class AppModel extends ChangeNotifier {
     totals.fatEaten = floor0(totals.fatEaten - prev.fat + updated.fat);
     meals[idx] = updated;
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
   }
@@ -241,6 +247,7 @@ class AppModel extends ChangeNotifier {
     totals.calorieGoal = kcal;
     profile.dailyCalorieGoal = kcal;
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
   }
@@ -267,6 +274,7 @@ class AppModel extends ChangeNotifier {
       totals.calorieGoal = profile.dailyCalorieGoal;
     }
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
   }
@@ -277,6 +285,7 @@ class AppModel extends ChangeNotifier {
     profile.dailyCalorieGoal = calorieGoal;
     hasCompletedOnboarding = true;
     DailyMacrosSnapshot.writeFrom(totals);
+    WidgetBridge.publish(totals);
     _persist();
     notifyListeners();
   }
