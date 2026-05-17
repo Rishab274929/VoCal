@@ -100,6 +100,10 @@ interface AppleIAP {
   purchase_date_ms?: string;
   // Refund / chargeback indicators.
   cancellation_date_ms?: string;
+  // Stable identifier for the whole subscription chain (same across renewals
+  // and re-subscriptions after a lapse). Persisted into user_entitlements
+  // so we can de-dupe across accounts and key future ASSN V2 webhooks on it.
+  original_transaction_id?: string;
 }
 
 export const onRequestOptions: PagesFunction<Env> = async () => {
@@ -194,6 +198,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   let activeProductId: string | null = null;
   let activeExpiresAt: number | null = null;
+  let activeOriginalTxId: string | null = null;
   const now = Date.now();
 
   for (const iap of iaps) {
@@ -205,6 +210,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!iap.expires_date_ms) {
       activeProductId = productId;
       activeExpiresAt = null; // null = no expiry
+      activeOriginalTxId = iap.original_transaction_id ?? null;
       break; // lifetime wins
     }
 
@@ -213,6 +219,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (activeExpiresAt == null || exp > activeExpiresAt) {
       activeProductId = productId;
       activeExpiresAt = exp;
+      activeOriginalTxId = iap.original_transaction_id ?? null;
     }
   }
 
@@ -225,21 +232,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     ).bind(userId, "VoCal User", now).run();
 
     await bindings.DB.prepare(
-      `INSERT INTO user_entitlements (user_id, is_pro, product_id, expires_at, updated_at, source)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+      `INSERT INTO user_entitlements (user_id, is_pro, product_id, expires_at, updated_at, source, original_transaction_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
        ON CONFLICT(user_id) DO UPDATE SET
          is_pro = excluded.is_pro,
          product_id = excluded.product_id,
          expires_at = excluded.expires_at,
          updated_at = excluded.updated_at,
-         source = excluded.source`
+         source = excluded.source,
+         original_transaction_id = excluded.original_transaction_id`
     ).bind(
       userId,
       isPro ? 1 : 0,
       activeProductId,
       activeExpiresAt,
       now,
-      "apple_receipt"
+      "apple_receipt",
+      activeOriginalTxId
     ).run();
   } catch (err) {
     console.error("entitlements/refresh: D1 upsert failed", (err as Error).message);
