@@ -28,6 +28,7 @@ import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 
 import '../models/models.dart';
+import 'api_response_hook.dart';
 import 'voice_api.dart' show ApiConfig;
 
 /// Pluggable auth header source — see CoachApiAuth in coach_api.dart for the
@@ -153,6 +154,7 @@ class PhotoApiClient {
     } on http.ClientException catch (e) {
       throw PhotoApiException('HTTP client error: ${e.message}');
     }
+    ApiResponseHook.notify(res);
 
     if (res.statusCode == 413) {
       // Backend rejected the image as too large. Our resize should keep us

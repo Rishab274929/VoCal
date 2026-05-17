@@ -46,6 +46,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'persistence.dart';
 import 'voice_api.dart';
+import 'widget_bridge.dart';
 
 class AuthSession extends ChangeNotifier {
   // SharedPreferences keys.
@@ -219,6 +220,45 @@ class AuthSession extends ChangeNotifier {
     // to survive. Server-side merge handles cross-device continuity.
   }
 
+  /// Capture an `X-Vocal-Anon-*` triplet from a response. The server emits
+  /// these when an endpoint mints a fresh anon session for an unauthed
+  /// caller (see `requireUserIdOrMint` server-side). Only persist when we
+  /// don't already have a real Google/Apple session — never downgrade a
+  /// signed-in identity to anon based on a response header.
+  ///
+  /// Best-effort: header parse failures, missing keys, or write errors
+  /// are all silent. The caller is just plumbing API responses through
+  /// here on their way to handling normal success/error.
+  Future<void> captureMintedSessionIfNeeded(http.Response response) async {
+    final prior = _current;
+    if (prior != null && prior.provider != 'anonymous') return;
+    // http.Response.headers downcases keys per RFC 7230 §3.2.
+    final uid = response.headers['x-vocal-anon-user-id'];
+    final tok = response.headers['x-vocal-anon-token'];
+    final expStr = response.headers['x-vocal-anon-expires-at'];
+    if (uid == null || tok == null || expStr == null) return;
+    final expMs = int.tryParse(expStr);
+    if (expMs == null) return;
+    final deviceId = prior?.deviceId ?? await _loadOrCreateDeviceId();
+    final snap = _Snapshot(
+      userId: uid,
+      token: tok,
+      // Server emits milliseconds since epoch (matches /api/auth/anonymous).
+      expiresAt: DateTime.fromMillisecondsSinceEpoch(expMs),
+      deviceId: deviceId,
+      provider: 'anonymous',
+    );
+    _current = snap;
+    _userId = uid;
+    _provider = 'anonymous';
+    _isAuthenticated = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_snapshotKey, snap.encode());
+    } catch (_) {}
+    notifyListeners();
+  }
+
   /// Erase the local session. Next request will mint a fresh anon user.
   ///
   /// [clearLocalData] — when true, also wipes the persisted meal log and
@@ -242,11 +282,13 @@ class AuthSession extends ChangeNotifier {
     _isAuthenticated = false;
     if (clearLocalData) {
       await Persistence.clear();
-      // Also drop the cached daily-macros snapshot so widgets/intents
-      // don't keep reading the previous user's totals.
+      // Also drop the cached daily-macros snapshot + the widget snapshot
+      // so app-intents and the home-screen widget don't keep showing the
+      // previous user's totals until the next mutation.
       try {
         await prefs.remove('vocal.dailyMacrosSnapshot.v1');
       } catch (_) {}
+      await WidgetBridge.clear();
     }
     notifyListeners();
   }

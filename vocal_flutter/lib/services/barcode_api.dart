@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'api_response_hook.dart';
 import 'voice_api.dart' show ApiConfig;
 
 class BarcodeApiResult {
@@ -69,6 +70,7 @@ class BarcodeApi {
     } on http.ClientException catch (e) {
       throw Exception('HTTP client error: ${e.message}');
     }
+    ApiResponseHook.notify(res);
     if (res.statusCode == 404) throw const BarcodeApiNotFound();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('Bad server response (${res.statusCode})');

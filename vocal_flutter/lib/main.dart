@@ -8,7 +8,9 @@ import 'package:provider/provider.dart';
 
 import 'screens/content_view.dart';
 import 'screens/onboarding_flow.dart';
+import 'services/api_response_hook.dart';
 import 'services/auth_session.dart';
+import 'services/barcode_api.dart';
 import 'services/coach_api.dart';
 import 'services/food_canon.dart';
 import 'services/photo_api.dart';
@@ -63,6 +65,15 @@ Future<void> main() async {
   CoachApiAuth.tokenLoader = () => auth.currentToken();
   PhotoApiAuth.tokenLoader = () => auth.currentToken();
   TtsApiAuth.tokenLoader = () => auth.currentToken();
+  BarcodeApi.tokenLoader = () => auth.currentToken();
+  // Pipe every successful API response into AuthSession so the server's
+  // X-Vocal-Anon-* mint-on-the-fly headers persist without the caller
+  // having to know about them. Mirrors iOS VoiceCoach's manual
+  // `AuthSession.shared.captureMintedSessionIfNeeded(from:)` calls but
+  // routed centrally so every endpoint gets the benefit.
+  ApiResponseHook.listener = (response) =>
+      // ignore: discarded_futures
+      auth.captureMintedSessionIfNeeded(response);
 
   runApp(
     // Multi-provider so widgets can `context.watch<AuthSession>()` to

@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'api_response_hook.dart';
 
 class ApiConfig {
   static const String baseUrl = String.fromEnvironment(
@@ -77,6 +78,7 @@ class VoiceApiClient {
     } on http.ClientException catch (e) {
       throw VoiceApiException('HTTP client error: ${e.message}');
     }
+    ApiResponseHook.notify(res);
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw VoiceApiException('Bad server response (${res.statusCode})');
