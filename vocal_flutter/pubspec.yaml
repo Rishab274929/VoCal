@@ -1,0 +1,48 @@
+name: vocal
+description: "VoCal — the first calorie tracker that actually listens. Flutter port (Android + iOS)."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.2          # ChangeNotifier state — mirrors SwiftUI ObservableObject/@EnvironmentObject
+  http: ^1.2.2              # /api/voice/parse client
+  shared_preferences: ^2.3.2 # DailyMacrosSnapshot (UserDefaults equivalent)
+  path_provider: ^2.1.4     # Documents dir for the JSON state snapshot
+  speech_to_text: ^7.0.0    # Android SpeechRecognizer + iOS Speech (SFSpeechRecognizer equivalent)
+  permission_handler: ^11.3.1
+  image_picker: ^1.1.2      # camera + library (UIImagePickerController equivalent)
+  image: ^4.3.0             # pure-Dart resize/encode for /api/photo/parse — no native deps so it works on both Android + iOS without per-platform glue
+  google_fonts: ^6.2.1      # New York-like serif (Newsreader) display type
+  intl: ^0.19.0
+  # Live barcode scanning (iOS BarcodeScannerSheet.swift parity). Pinned to
+  # v5 because v6 raised the floor to Flutter 3.27+ and the worktree
+  # toolchain is 3.41 stable; v5 stays compatible with our Dart 3.11 SDK.
+  mobile_scanner: ^5.2.3
+  # AuthSession — google_sign_in handles the native Android sign-in flow
+  # (account picker + Play Services id_token issuance). Pinned to the 6.x
+  # line; 7.x reworks the API around scopes and is not source-compatible.
+  # On Android this requires a SHA-1 fingerprint registered in Google
+  # Cloud Console + matching applicationId (best.vocal.vocal). No
+  # google-services.json file is needed when using `serverClientId` (we
+  # pass the WEB OAuth client ID at runtime via
+  # --dart-define=GOOGLE_SERVER_CLIENT_ID).
+  google_sign_in: ^6.2.1
+  # Coach voice TTS playback — mp3 bytes from /api/coach/voice are written
+  # to a temp file and handed to AudioPlayer via setFilePath(). just_audio
+  # is the same audio engine on both iOS and Android (audioplayers and
+  # flutter_sound have rougher Android paths around lifecycle + focus).
+  # Pinned to 0.9.x: 0.10 raised the minSdk to 23 and we still ship 21.
+  just_audio: ^0.9.40
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/food_canon.json
