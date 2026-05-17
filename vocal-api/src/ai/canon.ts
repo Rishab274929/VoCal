@@ -11,6 +11,8 @@ import type { ParsedMeal } from "../types";
 interface Item {
   /** Lowercased aliases that should match this item. ALL terms must appear. */
   match: string[][];
+  /** Macros + optional micros. Sodium especially is well-published for
+   *  QSR chains and is the most useful micronutrient to surface. */
   meal: Omit<ParsedMeal, "slot" | "source" | "confidence">;
   defaultSlot: ParsedMeal["slot"];
 }
@@ -28,42 +30,42 @@ export const CHAIN_CANON: Chain[] = [
     items: [
       {
         match: [["fries", "large"], ["fry", "large"], ["large", "fr"]],
-        meal: { name: "McDonald's French Fries (Large)", detail: "Chain menu match", kcal: 480, protein_g: 7, carbs_g: 66, fat_g: 23 },
+        meal: { name: "McDonald's French Fries (Large)", detail: "Chain menu match", kcal: 480, protein_g: 7, carbs_g: 66, fat_g: 23, sodium_mg: 400, fiber_g: 6, sugar_g: 0, potassium_mg: 800 },
         defaultSlot: "snack"
       },
       {
         match: [["fries", "small"], ["fry", "small"], ["small", "fr"]],
-        meal: { name: "McDonald's French Fries (Small)", detail: "Chain menu match", kcal: 230, protein_g: 3, carbs_g: 31, fat_g: 11 },
+        meal: { name: "McDonald's French Fries (Small)", detail: "Chain menu match", kcal: 230, protein_g: 3, carbs_g: 31, fat_g: 11, sodium_mg: 190, fiber_g: 3, sugar_g: 0, potassium_mg: 380 },
         defaultSlot: "snack"
       },
       {
         match: [["fr", "med"], ["fries", "medium"], ["fries"], ["fry"]],
-        meal: { name: "McDonald's French Fries (Medium)", detail: "Chain menu match", kcal: 320, protein_g: 4, carbs_g: 43, fat_g: 15 },
+        meal: { name: "McDonald's French Fries (Medium)", detail: "Chain menu match", kcal: 320, protein_g: 4, carbs_g: 43, fat_g: 15, sodium_mg: 260, fiber_g: 4, sugar_g: 0, potassium_mg: 540 },
         defaultSlot: "snack"
       },
       {
         match: [["big", "mac"]],
-        meal: { name: "McDonald's Big Mac", detail: "Chain menu match", kcal: 590, protein_g: 25, carbs_g: 45, fat_g: 34 },
+        meal: { name: "McDonald's Big Mac", detail: "Chain menu match", kcal: 590, protein_g: 25, carbs_g: 45, fat_g: 34, sodium_mg: 1050, fiber_g: 3, sugar_g: 9, calcium_mg: 260, iron_mg: 4.5 },
         defaultSlot: "lunch"
       },
       {
         match: [["quarter", "pounder"]],
-        meal: { name: "McDonald's Quarter Pounder with Cheese", detail: "Chain menu match", kcal: 520, protein_g: 30, carbs_g: 42, fat_g: 26 },
+        meal: { name: "McDonald's Quarter Pounder with Cheese", detail: "Chain menu match", kcal: 520, protein_g: 30, carbs_g: 42, fat_g: 26, sodium_mg: 1140, fiber_g: 3, sugar_g: 10, calcium_mg: 320, iron_mg: 4.5 },
         defaultSlot: "lunch"
       },
       {
         match: [["mcchicken"], ["mc", "chicken"]],
-        meal: { name: "McDonald's McChicken", detail: "Chain menu match", kcal: 400, protein_g: 14, carbs_g: 39, fat_g: 21 },
+        meal: { name: "McDonald's McChicken", detail: "Chain menu match", kcal: 400, protein_g: 14, carbs_g: 39, fat_g: 21, sodium_mg: 560, fiber_g: 2, sugar_g: 5 },
         defaultSlot: "lunch"
       },
       {
         match: [["mcnugget"], ["chicken", "nugget", "10"]],
-        meal: { name: "McDonald's Chicken McNuggets (10 pc)", detail: "Chain menu match", kcal: 410, protein_g: 23, carbs_g: 25, fat_g: 24 },
+        meal: { name: "McDonald's Chicken McNuggets (10 pc)", detail: "Chain menu match", kcal: 410, protein_g: 23, carbs_g: 25, fat_g: 24, sodium_mg: 900, fiber_g: 1, sugar_g: 0 },
         defaultSlot: "lunch"
       },
       {
         match: [["egg", "mcmuffin"], ["sausage", "mcmuffin"]],
-        meal: { name: "McDonald's Egg McMuffin", detail: "Chain menu match", kcal: 310, protein_g: 17, carbs_g: 30, fat_g: 13 },
+        meal: { name: "McDonald's Egg McMuffin", detail: "Chain menu match", kcal: 310, protein_g: 17, carbs_g: 30, fat_g: 13, sodium_mg: 770, fiber_g: 2, sugar_g: 3, calcium_mg: 320, iron_mg: 2.7 },
         defaultSlot: "breakfast"
       }
     ]
@@ -117,27 +119,27 @@ export const CHAIN_CANON: Chain[] = [
     items: [
       {
         match: [["chicken", "sandwich"]],
-        meal: { name: "Chick-fil-A Chicken Sandwich", detail: "Original, no sides", kcal: 420, protein_g: 28, carbs_g: 41, fat_g: 17 },
+        meal: { name: "Chick-fil-A Chicken Sandwich", detail: "Original, no sides", kcal: 420, protein_g: 28, carbs_g: 41, fat_g: 17, sodium_mg: 1400, fiber_g: 1, sugar_g: 5 },
         defaultSlot: "lunch"
       },
       {
         match: [["spicy", "chicken", "sandwich"]],
-        meal: { name: "Chick-fil-A Spicy Chicken Sandwich", detail: "No sides", kcal: 450, protein_g: 28, carbs_g: 41, fat_g: 20 },
+        meal: { name: "Chick-fil-A Spicy Chicken Sandwich", detail: "No sides", kcal: 450, protein_g: 28, carbs_g: 41, fat_g: 20, sodium_mg: 1620, fiber_g: 1, sugar_g: 5 },
         defaultSlot: "lunch"
       },
       {
         match: [["grilled", "nugget", "12"]],
-        meal: { name: "Chick-fil-A Grilled Nuggets (12 pc)", detail: "Lean", kcal: 210, protein_g: 38, carbs_g: 2, fat_g: 5 },
+        meal: { name: "Chick-fil-A Grilled Nuggets (12 pc)", detail: "Lean", kcal: 210, protein_g: 38, carbs_g: 2, fat_g: 5, sodium_mg: 770, fiber_g: 0, sugar_g: 1 },
         defaultSlot: "lunch"
       },
       {
         match: [["nugget", "8"]],
-        meal: { name: "Chick-fil-A Chicken Nuggets (8 pc)", detail: "Breaded", kcal: 250, protein_g: 27, carbs_g: 11, fat_g: 11 },
+        meal: { name: "Chick-fil-A Chicken Nuggets (8 pc)", detail: "Breaded", kcal: 250, protein_g: 27, carbs_g: 11, fat_g: 11, sodium_mg: 1210, fiber_g: 1, sugar_g: 1 },
         defaultSlot: "lunch"
       },
       {
         match: [["waffle", "fr"]],
-        meal: { name: "Chick-fil-A Waffle Fries (Medium)", detail: "Side", kcal: 420, protein_g: 5, carbs_g: 50, fat_g: 24 },
+        meal: { name: "Chick-fil-A Waffle Fries (Medium)", detail: "Side", kcal: 420, protein_g: 5, carbs_g: 50, fat_g: 24, sodium_mg: 280, fiber_g: 5, sugar_g: 0, potassium_mg: 880 },
         defaultSlot: "snack"
       }
     ]
@@ -148,12 +150,12 @@ export const CHAIN_CANON: Chain[] = [
     items: [
       {
         match: [["whopper"]],
-        meal: { name: "Burger King Whopper", detail: "Chain menu match", kcal: 670, protein_g: 28, carbs_g: 49, fat_g: 40 },
+        meal: { name: "Burger King Whopper", detail: "Chain menu match", kcal: 670, protein_g: 28, carbs_g: 49, fat_g: 40, sodium_mg: 980, fiber_g: 2, sugar_g: 11 },
         defaultSlot: "lunch"
       },
       {
         match: [["whopper", "jr"]],
-        meal: { name: "Burger King Whopper Jr.", detail: "Chain menu match", kcal: 340, protein_g: 15, carbs_g: 29, fat_g: 19 },
+        meal: { name: "Burger King Whopper Jr.", detail: "Chain menu match", kcal: 340, protein_g: 15, carbs_g: 29, fat_g: 19, sodium_mg: 580, fiber_g: 1, sugar_g: 7 },
         defaultSlot: "lunch"
       }
     ]
@@ -164,12 +166,12 @@ export const CHAIN_CANON: Chain[] = [
     items: [
       {
         match: [["turkey", "footlong"], ["footlong", "turkey"]],
-        meal: { name: "Subway Turkey Footlong", detail: "9-grain wheat, standard veg", kcal: 560, protein_g: 36, carbs_g: 90, fat_g: 8 },
+        meal: { name: "Subway Turkey Footlong", detail: "9-grain wheat, standard veg", kcal: 560, protein_g: 36, carbs_g: 90, fat_g: 8, sodium_mg: 1820, fiber_g: 8, sugar_g: 12 },
         defaultSlot: "lunch"
       },
       {
         match: [["italian", "bmt"]],
-        meal: { name: "Subway Italian B.M.T. (6 inch)", detail: "9-grain wheat", kcal: 420, protein_g: 19, carbs_g: 45, fat_g: 17 },
+        meal: { name: "Subway Italian B.M.T. (6 inch)", detail: "9-grain wheat", kcal: 420, protein_g: 19, carbs_g: 45, fat_g: 17, sodium_mg: 1300, fiber_g: 4, sugar_g: 7 },
         defaultSlot: "lunch"
       }
     ]
@@ -180,12 +182,12 @@ export const CHAIN_CANON: Chain[] = [
     items: [
       {
         match: [["crunchwrap", "supreme"]],
-        meal: { name: "Taco Bell Crunchwrap Supreme", detail: "Beef", kcal: 530, protein_g: 16, carbs_g: 71, fat_g: 21 },
+        meal: { name: "Taco Bell Crunchwrap Supreme", detail: "Beef", kcal: 530, protein_g: 16, carbs_g: 71, fat_g: 21, sodium_mg: 1200, fiber_g: 6, sugar_g: 6 },
         defaultSlot: "lunch"
       },
       {
         match: [["crunchy", "taco"]],
-        meal: { name: "Taco Bell Crunchy Taco", detail: "Beef", kcal: 170, protein_g: 8, carbs_g: 13, fat_g: 9 },
+        meal: { name: "Taco Bell Crunchy Taco", detail: "Beef", kcal: 170, protein_g: 8, carbs_g: 13, fat_g: 9, sodium_mg: 310, fiber_g: 3, sugar_g: 1 },
         defaultSlot: "snack"
       }
     ]

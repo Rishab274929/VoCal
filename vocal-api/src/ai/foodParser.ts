@@ -29,6 +29,19 @@ Required fields when you return a meal:
   "confidence": float in [0, 1]
 }
 
+Optional micronutrient fields — include ONLY when you have well-documented
+public nutrition (chain restaurant nutrition guides, USDA standard refs).
+OMIT the key entirely when uncertain. Do NOT guess.
+{
+  "sodium_mg":   integer milligrams of sodium,
+  "fiber_g":     integer grams of dietary fiber,
+  "sugar_g":     integer grams of total sugar,
+  "calcium_mg":  integer milligrams of calcium,
+  "iron_mg":     number milligrams of iron (one decimal allowed),
+  "vitamin_c_mg": number milligrams of vitamin C,
+  "potassium_mg": integer milligrams of potassium
+}
+
 Or if you need clarification:
 {
   "follow_up_question": "One short question.",
@@ -40,7 +53,9 @@ Rules:
   is ~182g, a "slice of pizza" is ~107g, "1 cup rice" cooked is ~158g).
 - When the user names a chain ("Burger King Whopper") and you know the public
   nutrition for it, return that exact item — not an estimate.
-- Round all numeric fields to integers.
+- Round kcal + macros + sodium + fiber + sugar + calcium + potassium to integers.
+- iron_mg and vitamin_c_mg may have one decimal.
+- Omit any micronutrient field you're not confident about. Empty is better than wrong.
 - Output JSON only. No prose, no markdown.`;
 
 interface LLMMealOutput {
@@ -52,8 +67,53 @@ interface LLMMealOutput {
   fat_g?: number;
   slot?: string;
   confidence?: number;
+  sodium_mg?: number;
+  fiber_g?: number;
+  sugar_g?: number;
+  calcium_mg?: number;
+  iron_mg?: number;
+  vitamin_c_mg?: number;
+  potassium_mg?: number;
   follow_up_question?: string;
   reasoning?: string;
+}
+
+// Sanity bounds — reject obviously hallucinated values. Numbers based on
+// the worst-case "all of one ingredient" upper bounds for a single meal.
+const MICRO_MAX = {
+  sodium_mg: 10000,
+  fiber_g: 100,
+  sugar_g: 300,
+  calcium_mg: 3000,
+  iron_mg: 50,
+  vitamin_c_mg: 2000,
+  potassium_mg: 8000
+} as const;
+
+function pickMicros(p: LLMMealOutput): Partial<Pick<ParsedMeal,
+  "sodium_mg" | "fiber_g" | "sugar_g" | "calcium_mg" |
+  "iron_mg" | "vitamin_c_mg" | "potassium_mg">> {
+  const out: Partial<ParsedMeal> = {};
+  const intField = (k: keyof typeof MICRO_MAX): void => {
+    const v = p[k];
+    if (typeof v === "number" && isFinite(v) && v >= 0 && v <= MICRO_MAX[k]) {
+      (out as Record<string, number>)[k] = Math.round(v);
+    }
+  };
+  const floatField = (k: "iron_mg" | "vitamin_c_mg"): void => {
+    const v = p[k];
+    if (typeof v === "number" && isFinite(v) && v >= 0 && v <= MICRO_MAX[k]) {
+      (out as Record<string, number>)[k] = Math.round(v * 10) / 10;
+    }
+  };
+  intField("sodium_mg");
+  intField("fiber_g");
+  intField("sugar_g");
+  intField("calcium_mg");
+  floatField("iron_mg");
+  floatField("vitamin_c_mg");
+  intField("potassium_mg");
+  return out;
 }
 
 // The 450/20/45/20 generic stub was removed in iter 19. When all five
@@ -152,7 +212,8 @@ export async function parseTranscript(
         source: "voice",
         confidence: typeof parsed.confidence === "number"
           ? Math.max(0, Math.min(1, parsed.confidence))
-          : 0.78
+          : 0.78,
+        ...pickMicros(parsed)
       };
       return cacheAndReturn(env, trimmed, followUpAnswer, {
         transcript,

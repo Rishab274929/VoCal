@@ -455,10 +455,10 @@ struct OnboardingFlow: View {
         VStack(alignment: .leading, spacing: 22) {
             Text("04 · READY")
                 .eyebrow(Theme.Palette.voltage)
-            Text("Try it out.")
+            Text("Voice based.")
                 .font(Theme.Font.serif(48, weight: .medium))
                 .foregroundStyle(Theme.Palette.bone)
-            Text("Tap the mic and say what you ate. We'll log it for you — restaurant macros included.")
+            Text("Our proprietary voice assistant will listen, track, and log your calories and macros, automatically. Chat with coach to learn more about your personalized nutrition plan.")
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.Palette.ash)
 

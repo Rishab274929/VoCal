@@ -11,6 +11,12 @@ import SwiftUI
 struct ProgressScreen: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showingBFCapture = false
+    /// Meal currently being edited via `MealEditSheet`. Bound to a sheet
+    /// presentation that pops when this becomes non-nil.
+    @State private var editingMeal: MealEntry?
+    /// Meal queued for delete (swipe action). Gated behind confirmation
+    /// alert so a stray swipe doesn't wipe a meal silently.
+    @State private var pendingDelete: MealEntry?
 
     var body: some View {
         ScrollView {
@@ -20,6 +26,7 @@ struct ProgressScreen: View {
                 weeklyKcalChart
                 weightCard
                 bodyFatCard
+                recentMealsList
                 pastDaysList
                 Color.clear.frame(height: 80)
             }
@@ -32,6 +39,72 @@ struct ProgressScreen: View {
                 .presentationDetents([.large])
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $editingMeal) { meal in
+            MealEditSheet(meal: meal)
+        }
+        .alert("Delete this meal?", isPresented: Binding(
+            get: { pendingDelete != nil },
+            set: { if !$0 { pendingDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let meal = pendingDelete {
+                    appModel.removeMeal(meal)
+                }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDelete = nil
+            }
+        } message: {
+            if let m = pendingDelete {
+                Text("\(m.name) · \(m.calories) kcal")
+            }
+        }
+    }
+
+    // MARK: recent meals list (tap-to-edit, swipe-to-delete)
+
+    private var recentMealsList: some View {
+        // Cap to the most recent 20 meals so this list is a tidy editor
+        // panel, not a scroll trap. Power users with hundreds of meals
+        // still have TodayView for the in-session log + the past-days
+        // aggregation below.
+        let recent = Array(appModel.meals.prefix(20))
+
+        // SwiftUI's `.swipeActions` is only honored inside a `List` — using
+        // it inside a `LazyVStack` silently no-ops. We strip the List chrome
+        // (plain style, hidden separators, ink background, scroll disabled)
+        // so it blends with the editorial layout while still hosting native
+        // swipe gestures. Fixed-height (rows count × ~110pt) so the parent
+        // ScrollView owns the scroll.
+        return Group {
+            if !recent.isEmpty {
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeader(title: "Recent meals", eyebrow: "Tap to edit · swipe to delete")
+                    List {
+                        ForEach(recent) { meal in
+                            MealCard(meal: meal)
+                                .contentShape(Rectangle())
+                                .onTapGesture { editingMeal = meal }
+                                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        pendingDelete = meal
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollDisabled(true)
+                    .scrollContentBackground(.hidden)
+                    .frame(height: CGFloat(recent.count) * 110)
+                }
+            }
         }
     }
 

@@ -15,6 +15,17 @@ struct TodayView: View {
     @Binding var showingPhoto: Bool
     @Binding var showingBarcode: Bool
 
+    /// Meal currently being edited via `MealEditSheet`. Bound to a sheet
+    /// presentation that pops when this becomes non-nil. We never edit the
+    /// meal in place — the sheet creates a fresh updated copy that goes
+    /// through `AppModel.editMeal`.
+    @State private var editingMeal: MealEntry?
+    /// Meal queued for delete via the swipe action. Held in state so we can
+    /// gate the destructive remove behind a confirmation alert.
+    @State private var pendingDelete: MealEntry?
+    /// Toggles the collapsible Micros section under the macro bars.
+    @State private var showMicros = true
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
@@ -22,6 +33,7 @@ struct TodayView: View {
                 heroBlock
                 ringBlock
                 macrosBlock
+                microsBlock
                 mealsBlock
                 Color.clear.frame(height: 80)
             }
@@ -30,6 +42,27 @@ struct TodayView: View {
         }
         .background(Color.clear)
         .scrollIndicators(.hidden)
+        .sheet(item: $editingMeal) { meal in
+            MealEditSheet(meal: meal)
+        }
+        .alert("Delete this meal?", isPresented: Binding(
+            get: { pendingDelete != nil },
+            set: { if !$0 { pendingDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let meal = pendingDelete {
+                    appModel.removeMeal(meal)
+                }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDelete = nil
+            }
+        } message: {
+            if let m = pendingDelete {
+                Text("\(m.name) · \(m.calories) kcal")
+            }
+        }
     }
 
     // MARK: top — wordmark + streak + camera
@@ -182,13 +215,104 @@ struct TodayView: View {
             if appModel.meals.isEmpty {
                 emptyMealsCard
             } else {
-                // LazyVStack so a heavy logging day (50+ entries) doesn't
-                // eagerly lay out every MealCard on first render.
-                LazyVStack(spacing: 10) {
+                // `.swipeActions` only works inside `List`. We strip the
+                // List chrome (plain style, hidden separators, clear bg)
+                // so it blends with the editorial layout while still
+                // giving us native swipe-to-delete. Fixed-height so the
+                // parent ScrollView owns the scroll.
+                List {
                     ForEach(appModel.meals) { meal in
                         MealCard(meal: meal)
+                            .contentShape(Rectangle())
+                            .onTapGesture { editingMeal = meal }
+                            .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    pendingDelete = meal
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                     }
                 }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .scrollContentBackground(.hidden)
+                .frame(height: CGFloat(appModel.meals.count) * 110)
+            }
+        }
+    }
+
+    // MARK: micros — collapsible totals for the day
+
+    private var microsBlock: some View {
+        // Sum across today's meals for each micronutrient. If a meal didn't
+        // report a given micro it just doesn't contribute — no "0" pollution.
+        let today = Calendar.current.startOfDay(for: .now)
+        let todaysMeals = appModel.meals.filter {
+            Calendar.current.startOfDay(for: $0.loggedAt) == today
+        }
+        let sodium = todaysMeals.compactMap { $0.sodium_mg }.reduce(0, +)
+        let fiber = todaysMeals.compactMap { $0.fiber_g }.reduce(0, +)
+        let sugar = todaysMeals.compactMap { $0.sugar_g }.reduce(0, +)
+        let calcium = todaysMeals.compactMap { $0.calcium_mg }.reduce(0, +)
+        let iron = todaysMeals.compactMap { $0.iron_mg }.reduce(0, +)
+        let vitC = todaysMeals.compactMap { $0.vitamin_c_mg }.reduce(0, +)
+        let potassium = todaysMeals.compactMap { $0.potassium_mg }.reduce(0, +)
+
+        // Only show micros that any meal actually reported. Hides the whole
+        // block if none of today's meals carry micro data — keeps the day-1
+        // user from staring at seven empty rows.
+        let entries: [(String, String)] = [
+            sodium > 0 ? ("Sodium", "\(sodium) mg") : nil,
+            fiber > 0 ? ("Fiber", "\(fiber) g") : nil,
+            sugar > 0 ? ("Sugar", "\(sugar) g") : nil,
+            calcium > 0 ? ("Calcium", "\(calcium) mg") : nil,
+            iron > 0 ? ("Iron", String(format: "%.1f mg", iron)) : nil,
+            vitC > 0 ? ("Vitamin C", String(format: "%.0f mg", vitC)) : nil,
+            potassium > 0 ? ("Potassium", "\(potassium) mg") : nil
+        ].compactMap { $0 }
+
+        return Group {
+            if !entries.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { showMicros.toggle() }
+                    } label: {
+                        HStack(alignment: .firstTextBaseline) {
+                            SectionHeader(title: "Micros", eyebrow: "Today")
+                            Spacer()
+                            Image(systemName: showMicros ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.Palette.smoke)
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    if showMicros {
+                        VStack(spacing: 0) {
+                            ForEach(Array(entries.enumerated()), id: \.offset) { i, entry in
+                                MicroRow(label: entry.0, value: entry.1)
+                                if i < entries.count - 1 {
+                                    Rectangle()
+                                        .fill(Theme.Palette.hairline)
+                                        .frame(height: 1)
+                                }
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                                .fill(Theme.Palette.inkSurface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                                        .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
+                                )
+                        )
+                    }
+                }
+                .padding(.top, 4)
             }
         }
     }
@@ -229,6 +353,30 @@ struct TodayView: View {
                         .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
                 )
         )
+    }
+}
+
+/// Single thin hairline row inside the Micros card. Eyebrow label on the
+/// left, mono value on the right — matches the macro-bar / stat-column
+/// design language without competing with them visually.
+private struct MicroRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.8)
+                .foregroundStyle(Theme.Palette.smoke)
+            Spacer()
+            Text(value)
+                .font(Theme.Font.mono(12, weight: .medium))
+                .foregroundStyle(Theme.Palette.bone)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 

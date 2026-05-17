@@ -50,11 +50,11 @@ struct CalorieRing: View {
     private var isOver: Bool { eaten > goal }
     private var remaining: Int { max(0, goal - eaten) }
 
-    /// When eaten > goal, swap the voltage stroke for the coral pulse so the
-    /// user reads "over budget" instantly. Without this the ring just
-    /// completes silently and the center number says "0 KCAL LEFT" — no
-    /// signal at all that they actually went past.
-    private var strokeTint: Color { isOver ? Theme.Palette.pulse : Theme.Palette.voltage }
+    /// Monochrome pivot: stroke is `paper` (pure white) when on-track and
+    /// flips to `bone` (warm off-white) when over-goal. The chromatic
+    /// shift is gone — we lean on the center label + a softer stroke to
+    /// signal "past budget" without the old coral alarm.
+    private var strokeTint: Color { isOver ? Theme.Palette.bone : Theme.Palette.paper }
 
     var body: some View {
         ZStack {
@@ -67,34 +67,30 @@ struct CalorieRing: View {
             Circle()
                 .stroke(Theme.Palette.hairlineStrong, lineWidth: 10)
 
-            // Progress — voltage when on track, coral when over goal
+            // Progress — solid white when on-track, desaturated bone when over.
+            // No angular gradient: monochrome wants a flat, deliberate stroke.
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(
-                    AngularGradient(
-                        colors: [strokeTint.opacity(0.6), strokeTint, strokeTint],
-                        center: .center,
-                        startAngle: .degrees(0),
-                        endAngle: .degrees(360)
-                    ),
-                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                )
+                .stroke(strokeTint, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.easeOut(duration: 0.7), value: progress)
                 .animation(.easeOut(duration: 0.3), value: isOver)
-                .shadow(color: strokeTint.opacity(0.45), radius: 18)
+                // A tiny halo keeps the ring from feeling stenciled-flat
+                // against pure black — but at 8pt radius, not the old 18pt
+                // chromatic bloom.
+                .shadow(color: Theme.Palette.paper.opacity(0.18), radius: 8)
 
             // Center stack
             VStack(spacing: 0) {
                 Text("\(isOver ? overshoot : remaining)")
                     .font(Theme.Font.serif(size * 0.32, weight: .medium))
-                    .foregroundStyle(isOver ? Theme.Palette.pulse : Theme.Palette.bone)
+                    .foregroundStyle(Theme.Palette.paper)
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(isOver ? overshoot : remaining)))
                 Text(isOver ? "KCAL OVER" : "KCAL LEFT")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2.4)
-                    .foregroundStyle(isOver ? Theme.Palette.pulse : Theme.Palette.smoke)
+                    .foregroundStyle(isOver ? Theme.Palette.bone : Theme.Palette.smoke)
                     .padding(.top, 6)
                 HStack(spacing: 6) {
                     Text("\(eaten)")
@@ -159,7 +155,9 @@ struct MacroBar: View {
                         Capsule()
                             .fill(tint)
                             .frame(width: max(3, geo.size.width * progress))
-                            .shadow(color: tint.opacity(0.4), radius: 6, y: 0)
+                            // Monochrome pivot: drop the colored bloom; a 1pt
+                            // hairline alignment + the macro hue itself is
+                            // signal enough.
                             .animation(.easeOut(duration: 0.55), value: progress)
                     }
                 }
@@ -279,9 +277,13 @@ struct MealCard: View {
     }
 
     private var slotColor: Color {
+        // Monochrome pivot: lunch was the lime accent; now it's pure paper
+        // so the meal-card column reads as part of the type, not branding.
+        // Other slots keep their macro hues because they map to time of day
+        // in muscle memory (warm amber morning, cool blue evening).
         switch meal.slot {
         case .breakfast: Theme.Palette.carbs
-        case .lunch:     Theme.Palette.voltage
+        case .lunch:     Theme.Palette.paper
         case .dinner:    Theme.Palette.fat
         case .snack:     Theme.Palette.protein
         }
@@ -299,29 +301,31 @@ struct MicButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Outer pulse
+                // Outer pulse — white glow expanding (no coral)
                 Circle()
-                    .strokeBorder(Theme.Palette.pulse.opacity(0.55), lineWidth: 1.5)
+                    .strokeBorder(Theme.Palette.paper.opacity(0.45), lineWidth: 1.5)
                     .scaleEffect(pulse ? 1.7 : 1)
                     .opacity(pulse ? 0 : 1)
                 Circle()
-                    .strokeBorder(Theme.Palette.pulse.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(Theme.Palette.paper.opacity(0.28), lineWidth: 1)
                     .scaleEffect(pulse ? 1.45 : 1)
                     .opacity(pulse ? 0 : 1)
 
-                // Core orb
+                // Core orb — paper-white ring on ink (the brand statement
+                // in monochrome: the mic is the single bright artifact on
+                // the page, the way the starfield logo concentrates light)
                 Circle()
                     .fill(Theme.Palette.ink)
                     .overlay(
-                        Circle().strokeBorder(Theme.Palette.pulse, lineWidth: 2)
+                        Circle().strokeBorder(Theme.Palette.paper, lineWidth: 2)
                     )
-                    .shadow(color: Theme.Palette.pulse.opacity(0.4), radius: 14)
+                    .shadow(color: Theme.Palette.paper.opacity(0.35), radius: 14)
 
                 // Rotating tick marks (audio meter feel)
                 ZStack {
                     ForEach(0..<24, id: \.self) { i in
                         Rectangle()
-                            .fill(Theme.Palette.pulse.opacity(i % 3 == 0 ? 0.9 : 0.25))
+                            .fill(Theme.Palette.paper.opacity(i % 3 == 0 ? 0.85 : 0.22))
                             .frame(width: 1, height: i % 3 == 0 ? 5 : 2.5)
                             .offset(y: -(size * 0.42))
                             .rotationEffect(.degrees(Double(i) / 24 * 360))
@@ -331,7 +335,7 @@ struct MicButton: View {
 
                 Image(systemName: "mic.fill")
                     .font(.system(size: size * 0.32, weight: .bold))
-                    .foregroundStyle(Theme.Palette.bone)
+                    .foregroundStyle(Theme.Palette.paper)
             }
             .frame(width: size, height: size)
         }
@@ -354,7 +358,10 @@ struct MicButton: View {
 
 struct WaveformOrb: View {
     var isActive: Bool = true
-    var tint: Color = Theme.Palette.pulse
+    // Monochrome pivot: default to pure paper. Callers that explicitly pass
+    // a tint (legacy lime/coral references in screens) still win — that's
+    // intentional so the visual treatment is one place to audit.
+    var tint: Color = Theme.Palette.paper
     @State private var animate = false
 
     var body: some View {
@@ -465,10 +472,12 @@ struct VoltageButton: View {
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
             .frame(maxWidth: fullWidth ? .infinity : nil)
+            // Monochrome pivot: pure paper-on-ink. Reads like a pressed
+            // chiclet key — high-contrast, no chroma, no glow.
             .background(
                 Capsule()
-                    .fill(Theme.Palette.voltage)
-                    .shadow(color: Theme.Palette.voltage.opacity(0.35), radius: 22, y: 6)
+                    .fill(Theme.Palette.paper)
+                    .shadow(color: Color.black.opacity(0.45), radius: 18, y: 6)
             )
         }
         .buttonStyle(.plain)
@@ -576,7 +585,9 @@ struct EditorialTabBar: View {
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(1.2)
             }
-            .foregroundStyle(active ? Theme.Palette.voltage : Theme.Palette.smoke)
+            // Monochrome pivot: active tab is `paper`, inactive `smoke`.
+            // No more lime line — the contrast is white vs mid-gray.
+            .foregroundStyle(active ? Theme.Palette.paper : Theme.Palette.smoke)
             .frame(maxWidth: .infinity)
             .padding(.bottom, 2)
         }
@@ -593,9 +604,11 @@ struct StreakBadge: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            // Monochrome pivot: flame to a paper-tinted icon. Keeps the
+            // flame metaphor for streaks, drops the alarm chroma.
             Image(systemName: "flame.fill")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Theme.Palette.pulse)
+                .foregroundStyle(Theme.Palette.paper)
             Text("\(days)")
                 .font(Theme.Font.mono(13, weight: .semibold))
                 .foregroundStyle(Theme.Palette.bone)
@@ -617,12 +630,15 @@ struct StreakBadge: View {
 struct VoCalWordmark: View {
     var body: some View {
         HStack(spacing: 0) {
+            // Monochrome pivot: matches the starfield-on-black brand mark.
+            // "Vo" in bone (warm off-white), "Cal" in pure paper so the
+            // wordmark still has a typographic inflection without color.
             Text("Vo")
                 .font(Theme.Font.serif(20, weight: .semibold, italic: true))
                 .foregroundStyle(Theme.Palette.bone)
             Text("Cal")
                 .font(Theme.Font.serif(20, weight: .semibold, italic: true))
-                .foregroundStyle(Theme.Palette.voltage)
+                .foregroundStyle(Theme.Palette.paper)
         }
         .fixedSize(horizontal: true, vertical: false)
         // Italic glyphs overshoot their typographic frame on both sides;
@@ -640,8 +656,11 @@ struct FollowUpQuestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            // Monochrome pivot: eyebrow + card outline both shift from
+            // coral to paper. The card stands out by sheer luminance
+            // contrast against the inkRaised surface.
             Text("ONE QUICK CHECK")
-                .eyebrow(Theme.Palette.pulse)
+                .eyebrow(Theme.Palette.paper)
             Text(question)
                 .font(Theme.Font.serif(24, weight: .medium))
                 .foregroundStyle(Theme.Palette.bone)
@@ -662,7 +681,7 @@ struct FollowUpQuestionCard: View {
                 .fill(Theme.Palette.inkRaised)
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
-                        .strokeBorder(Theme.Palette.pulse.opacity(0.4), lineWidth: 1)
+                        .strokeBorder(Theme.Palette.paper.opacity(0.35), lineWidth: 1)
                 )
         )
     }
@@ -672,7 +691,9 @@ struct FollowUpQuestionCard: View {
 
 struct WeightSparkline: View {
     let values: [Double]
-    var tint: Color = Theme.Palette.voltage
+    // Monochrome pivot: default tint is paper. Callers passing an explicit
+    // tint (e.g. directional weight change) still win.
+    var tint: Color = Theme.Palette.paper
 
     private var range: (min: Double, max: Double) {
         let mn = values.min() ?? 0
@@ -755,9 +776,12 @@ struct CoachBubble: View {
                 .foregroundStyle(role == .user ? Theme.Palette.ink : Theme.Palette.bone)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                // Monochrome pivot: user bubble flips from lime to paper.
+                // Reads like an iMessage in the editorial palette — high
+                // contrast, no chroma.
                 .background(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(role == .user ? Theme.Palette.voltage : Theme.Palette.inkSurface)
+                        .fill(role == .user ? Theme.Palette.paper : Theme.Palette.inkSurface)
                 )
                 .overlay(
                     role == .assistant
@@ -770,35 +794,24 @@ struct CoachBubble: View {
     }
 }
 
-// MARK: - Background ambient (subtle voltage glow at top)
+// MARK: - Background ambient (monochrome — ink with a soft top fade)
 
 struct AmbientBackground: View {
     var body: some View {
         ZStack {
             Theme.Palette.ink
-            // Soft glow blob
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Theme.Palette.voltage.opacity(0.10), .clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 240
-                    )
-                )
-                .frame(width: 460, height: 460)
-                .offset(x: -140, y: -360)
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Theme.Palette.pulse.opacity(0.06), .clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 220
-                    )
-                )
-                .frame(width: 380, height: 380)
-                .offset(x: 160, y: -200)
+            // Monochrome pivot: dropped the lime + coral radial blobs.
+            // A single very-subtle linear lift at the top keeps the screen
+            // from feeling like a flat black PDF without painting in any
+            // hue. Reads as ambient room light, not branding.
+            LinearGradient(
+                colors: [
+                    Theme.Palette.paper.opacity(0.04),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .center
+            )
         }
         .ignoresSafeArea()
     }

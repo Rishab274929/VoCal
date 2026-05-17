@@ -1,12 +1,14 @@
-// GET  /api/meals?user_id=...&since=<ts>  → list meals
-// POST /api/meals                          → create a meal manually
+// GET  /api/meals?since=<ts>  → list this user's meals
+// POST /api/meals              → create a meal manually
 //
-// Auth: PREFERS a verified bearer JWT (from /api/auth/anonymous or
-// /api/auth/google) and falls back to the query/body user_id for legacy
-// clients. When both are present and disagree, the JWT wins — the client's
-// claim is rejected as an auth-bypass attempt.
+// Auth: HARD-REQUIRED bearer JWT. We previously accepted a body/query
+// `user_id` as a soft fallback; that path is gone now that the iOS and
+// Flutter clients both ship bearer-token auth (see /api/auth/anonymous +
+// /api/auth/google). Old clients that send `user_id` will get a 401 — a
+// deliberate cutover.
 
-import { authIdentity, resolveUserId } from "../../../src/lib/auth";
+import { AuthRequiredError, authErrorResponse, requireUserId } from "../../../src/lib/auth";
+import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 interface CreateMealBody {
   user_id?: string;
@@ -21,16 +23,28 @@ interface CreateMealBody {
   transcript?: string;
   confidence?: number;
   logged_at?: number;
+  // Optional micros — persisted to the meals table when present.
+  sodium_mg?: number;
+  fiber_g?: number;
+  sugar_g?: number;
+  calcium_mg?: number;
+  iron_mg?: number;
+  vitamin_c_mg?: number;
+  potassium_mg?: number;
 }
+
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-allow-headers": "content-type,authorization"
+};
 
 const json = (data: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(data), {
     ...init,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization",
+      ...CORS,
       ...(init?.headers ?? {}),
     },
   });
@@ -38,32 +52,29 @@ const json = (data: unknown, init?: ResponseInit): Response =>
 export const onRequestOptions = async (): Promise<Response> => {
   return new Response(null, {
     status: 204,
-    headers: {
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization",
-    },
+    headers: CORS,
   });
 };
 
 export const onRequestGet: PagesFunction = async ({ request, env }) => {
-  const bindings = env as unknown as { DB?: D1Database; JWT_SECRET?: string };
+  const bindings = env as unknown as { DB?: D1Database; JWT_SECRET?: string; FOOD_KV?: KVNamespace };
+
+  const rl = await checkRateLimit(bindings, request, "meals/list", 30);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS);
+
+  let userId: string;
+  try {
+    ({ userId } = await requireUserId(bindings, request));
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS);
+    throw err;
+  }
+
+  // No DB → empty list. Don't 503 GETs; an empty meals list is a valid
+  // (if uncommon) state for a brand-new user.
   if (!bindings.DB) return json({ meals: [] });
 
   const url = new URL(request.url);
-  const queryUserId = url.searchParams.get("user_id");
-  // Prefer the authenticated identity. Without auth we still serve the
-  // requested user_id to keep legacy clients working — but log the case so
-  // it's visible in Workers tail.
-  const identity = await authIdentity(request, bindings);
-  const { userId, mismatch, source } = resolveUserId(identity, queryUserId);
-  if (mismatch) {
-    console.warn("meals GET: rejecting client user_id, using JWT sub", { jwt: identity.userId, claimed: queryUserId });
-  }
-  if (source === "default") {
-    // No JWT and no body user_id — return the demo bucket for backwards-
-    // compat but cap the result count tighter.
-  }
   const since = Number(url.searchParams.get("since") || 0);
   const sinceSafe = isFinite(since) && since >= 0 ? since : 0;
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 100), 1), 500);
@@ -81,7 +92,11 @@ export const onRequestGet: PagesFunction = async ({ request, env }) => {
 };
 
 export const onRequestPost: PagesFunction = async ({ request, env }) => {
-  const bindings = env as unknown as { DB?: D1Database; JWT_SECRET?: string };
+  const bindings = env as unknown as { DB?: D1Database; JWT_SECRET?: string; FOOD_KV?: KVNamespace };
+
+  const rl = await checkRateLimit(bindings, request, "meals/create", 30);
+  if (!rl.allowed) return rateLimitedResponse(rl, CORS);
+
   if (!bindings.DB) return json({ error: "DB unavailable" }, { status: 503 });
 
   // Pre-flight body-size check — refuse > 16KB request bodies. A manual meal
@@ -97,6 +112,14 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
     body = (await request.json()) as CreateMealBody;
   } catch {
     return json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  let userId: string;
+  try {
+    ({ userId } = await requireUserId(bindings, request, body.user_id));
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS);
+    throw err;
   }
 
   if (!body.name || typeof body.name !== "string" || typeof body.kcal !== "number") {
@@ -124,12 +147,24 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
     return json({ error: "macro out of range" }, { status: 400 });
   }
 
-  // Auth resolution: trust the JWT identity over the body's user_id.
-  const identity = await authIdentity(request, bindings);
-  const { userId, mismatch } = resolveUserId(identity, body.user_id);
-  if (mismatch) {
-    console.warn("meals POST: rejecting client user_id, using JWT sub", { jwt: identity.userId, claimed: body.user_id });
-  }
+  // Optional micros: same bounds as foodParser.pickMicros. Returns null
+  // when missing/out-of-range so we bind a SQL NULL.
+  const intMicro = (v: unknown, max: number): number | null => {
+    if (typeof v !== "number" || !isFinite(v) || v < 0 || v > max) return null;
+    return Math.round(v);
+  };
+  const floatMicro = (v: unknown, max: number): number | null => {
+    if (typeof v !== "number" || !isFinite(v) || v < 0 || v > max) return null;
+    return Math.round(v * 10) / 10;
+  };
+  const sodium_mg     = intMicro(body.sodium_mg, 10000);
+  const fiber_g       = intMicro(body.fiber_g, 100);
+  const sugar_g       = intMicro(body.sugar_g, 300);
+  const calcium_mg    = intMicro(body.calcium_mg, 3000);
+  const iron_mg       = floatMicro(body.iron_mg, 50);
+  const vitamin_c_mg  = floatMicro(body.vitamin_c_mg, 2000);
+  const potassium_mg  = intMicro(body.potassium_mg, 8000);
+
   const now = Date.now();
   const id = crypto.randomUUID();
   const loggedAt = typeof body.logged_at === "number" && isFinite(body.logged_at) && body.logged_at > 0
@@ -145,8 +180,10 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
   ).bind(userId, "VoCal User", now, now).run();
 
   await bindings.DB.prepare(
-    `INSERT INTO meals (id, user_id, name, detail, kcal, protein_g, carbs_g, fat_g, slot, source, transcript, confidence, logged_at, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`,
+    `INSERT INTO meals (id, user_id, name, detail, kcal, protein_g, carbs_g, fat_g, slot, source, transcript, confidence, logged_at, created_at,
+                        sodium_mg, fiber_g, sugar_g, calcium_mg, iron_mg, vitamin_c_mg, potassium_mg)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+             ?15, ?16, ?17, ?18, ?19, ?20, ?21)`,
   ).bind(
     id,
     userId,
@@ -164,6 +201,13 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
       : null,
     loggedAt,
     now,
+    sodium_mg,
+    fiber_g,
+    sugar_g,
+    calcium_mg,
+    iron_mg,
+    vitamin_c_mg,
+    potassium_mg,
   ).run();
 
   return json({ id, user_id: userId, logged_at: loggedAt });

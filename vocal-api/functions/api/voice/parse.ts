@@ -95,31 +95,41 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         .run();
       // Schema: meals(id, user_id, name, detail, kcal, protein_g, carbs_g,
       // fat_g, slot, source, photo_r2_key, transcript, confidence, logged_at,
-      // created_at). The old insert was missing user_id + created_at + the
-      // photo_r2_key slot, so every prod write was silently failing.
+      // created_at, sodium_mg, fiber_g, sugar_g, calcium_mg, iron_mg,
+      // vitamin_c_mg, potassium_mg). Micros may be undefined; bind null.
+      const m = result.meal;
       await env.DB
         .prepare(
           `INSERT INTO meals
              (id, user_id, name, detail, kcal, protein_g, carbs_g, fat_g,
-              slot, source, photo_r2_key, transcript, confidence, logged_at, created_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`
+              slot, source, photo_r2_key, transcript, confidence, logged_at, created_at,
+              sodium_mg, fiber_g, sugar_g, calcium_mg, iron_mg, vitamin_c_mg, potassium_mg)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                   ?16, ?17, ?18, ?19, ?20, ?21, ?22)`
         )
         .bind(
           crypto.randomUUID(),
           userId,
-          result.meal.name,
-          result.meal.detail,
-          result.meal.kcal,
-          result.meal.protein_g,
-          result.meal.carbs_g,
-          result.meal.fat_g,
-          result.meal.slot,
-          result.meal.source,
+          m.name,
+          m.detail,
+          m.kcal,
+          m.protein_g,
+          m.carbs_g,
+          m.fat_g,
+          m.slot,
+          m.source,
           null,
           transcript,
-          result.meal.confidence,
+          m.confidence,
           now,
-          now
+          now,
+          m.sodium_mg ?? null,
+          m.fiber_g ?? null,
+          m.sugar_g ?? null,
+          m.calcium_mg ?? null,
+          m.iron_mg ?? null,
+          m.vitamin_c_mg ?? null,
+          m.potassium_mg ?? null
         )
         .run();
     } catch (err) {

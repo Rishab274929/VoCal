@@ -29,3 +29,11 @@ APPLE_AUDIENCES=
 
 # --- Other ---
 USDA_FDC_API_KEY=
+
+# --- ElevenLabs TTS (for /api/coach/voice) ---
+# Comma-separated list of API keys; the endpoint rotates on 401/402/429/5xx.
+# Single-key dev setups can also set ELEVENLABS_API_KEY.
+ELEVENLABS_API_KEYS=
+ELEVENLABS_API_KEY=
+# Optional voice ID override (defaults to "pNInz6obpgDQGcFmaJgB" — Adam).
+ELEVENLABS_VOICE_ID=

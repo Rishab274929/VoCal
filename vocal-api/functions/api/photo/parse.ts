@@ -54,6 +54,18 @@ Required fields when you return a meal:
   "confidence": float in [0, 1]
 }
 
+Optional micronutrient fields — include ONLY when you have well-documented
+public nutrition. OMIT the key entirely when uncertain. Do NOT guess.
+{
+  "sodium_mg":   integer milligrams of sodium,
+  "fiber_g":     integer grams of dietary fiber,
+  "sugar_g":     integer grams of total sugar,
+  "calcium_mg":  integer milligrams of calcium,
+  "iron_mg":     number milligrams of iron (one decimal allowed),
+  "vitamin_c_mg": number milligrams of vitamin C,
+  "potassium_mg": integer milligrams of potassium
+}
+
 Or if you genuinely need clarification:
 {
   "follow_up_question": "One short question.",
@@ -66,7 +78,9 @@ Rules:
   nutrition for the item if you know it.
 - Voice context overrides photo when they conflict ("there's chicken under
   the rice" means count chicken even if you can't see it).
-- Round all numeric fields to integers.
+- Round kcal + macros + sodium + fiber + sugar + calcium + potassium to integers.
+- iron_mg and vitamin_c_mg may have one decimal.
+- Omit any micronutrient field you're not confident about. Empty is better than wrong.
 - Output JSON only. No prose, no markdown.`;
 
 interface LLMMealOutput {
@@ -78,8 +92,52 @@ interface LLMMealOutput {
   fat_g?: number;
   slot?: string;
   confidence?: number;
+  sodium_mg?: number;
+  fiber_g?: number;
+  sugar_g?: number;
+  calcium_mg?: number;
+  iron_mg?: number;
+  vitamin_c_mg?: number;
+  potassium_mg?: number;
   follow_up_question?: string;
   reasoning?: string;
+}
+
+// Mirror foodParser.ts — pulls only fields that fit physiological bounds.
+const MICRO_MAX = {
+  sodium_mg: 10000,
+  fiber_g: 100,
+  sugar_g: 300,
+  calcium_mg: 3000,
+  iron_mg: 50,
+  vitamin_c_mg: 2000,
+  potassium_mg: 8000
+} as const;
+
+function pickMicros(p: LLMMealOutput): Partial<Pick<ParsedMeal,
+  "sodium_mg" | "fiber_g" | "sugar_g" | "calcium_mg" |
+  "iron_mg" | "vitamin_c_mg" | "potassium_mg">> {
+  const out: Partial<ParsedMeal> = {};
+  const intField = (k: keyof typeof MICRO_MAX): void => {
+    const v = p[k];
+    if (typeof v === "number" && isFinite(v) && v >= 0 && v <= MICRO_MAX[k]) {
+      (out as Record<string, number>)[k] = Math.round(v);
+    }
+  };
+  const floatField = (k: "iron_mg" | "vitamin_c_mg"): void => {
+    const v = p[k];
+    if (typeof v === "number" && isFinite(v) && v >= 0 && v <= MICRO_MAX[k]) {
+      (out as Record<string, number>)[k] = Math.round(v * 10) / 10;
+    }
+  };
+  intField("sodium_mg");
+  intField("fiber_g");
+  intField("sugar_g");
+  intField("calcium_mg");
+  floatField("iron_mg");
+  floatField("vitamin_c_mg");
+  intField("potassium_mg");
+  return out;
 }
 
 interface PhotoParseRequest {
@@ -181,7 +239,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       source: payload.voice_context?.trim() ? "voice+photo" : "photo",
       confidence: typeof parsed.confidence === "number"
         ? Math.max(0, Math.min(1, parsed.confidence))
-        : 0.78
+        : 0.78,
+      ...pickMicros(parsed)
     };
     const response: VoiceParseResponse = {
       transcript: payload.voice_context ?? "",

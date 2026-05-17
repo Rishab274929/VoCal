@@ -80,3 +80,65 @@ export function resolveUserId(
   }
   return { userId: "demo-user", mismatch: false, source: "default" };
 }
+
+/** Thrown by requireUserId when no valid JWT is present. Catch in handlers
+ *  and return the bundled Response (already has CORS-safe shape). */
+export class AuthRequiredError extends Error {
+  constructor(public readonly reason: "missing" | "invalid") {
+    super(reason === "missing" ? "missing bearer token" : "invalid bearer token");
+  }
+}
+
+/**
+ * Hard-required identity. Throws AuthRequiredError if no valid JWT is
+ * present in the Authorization header. Use this on protected endpoints
+ * where we explicitly do NOT want a body.user_id fallback.
+ *
+ * The optional `bodyUserId` is accepted only for mismatch logging — the
+ * JWT sub always wins.
+ */
+export async function requireUserId(
+  env: { JWT_SECRET?: string },
+  request: Request,
+  bodyUserId?: string | null
+): Promise<{ userId: string; identity: AuthIdentity }> {
+  const header = request.headers.get("Authorization") || request.headers.get("authorization");
+  if (!header || !/^Bearer\s+/i.test(header)) {
+    throw new AuthRequiredError("missing");
+  }
+  const identity = await authIdentity(request, env);
+  if (!identity.userId) {
+    // Header was present but verification failed (bad secret, expired, malformed).
+    throw new AuthRequiredError("invalid");
+  }
+  const sanitize = (s: string): string =>
+    s.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 96);
+  const body = bodyUserId?.trim();
+  if (body && body !== identity.userId) {
+    console.warn("requireUserId: rejecting client user_id, using JWT sub", {
+      jwt: identity.userId,
+      claimed: body
+    });
+  }
+  return { userId: sanitize(identity.userId), identity };
+}
+
+/** Helper to build a uniform 401 response from an AuthRequiredError.
+ *  Caller passes the CORS headers it would otherwise set on a success. */
+export function authErrorResponse(
+  err: AuthRequiredError,
+  corsHeaders: Record<string, string> = {}
+): Response {
+  const code = err.reason === "missing" ? "auth_required" : "auth_invalid";
+  return new Response(
+    JSON.stringify({ error: code, detail: err.message }),
+    {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": 'Bearer realm="vocal-api"',
+        ...corsHeaders
+      }
+    }
+  );
+}

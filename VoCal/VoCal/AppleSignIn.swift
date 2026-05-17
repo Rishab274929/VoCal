@@ -6,6 +6,32 @@
 //  REQUIRES Sign in with Apple to be offered alongside any third-party social
 //  login (Google, etc.). Without this, App Store submission gets auto-rejected.
 //
+//  ──────────────────────────────────────────────────────────────────────────
+//  PROVISIONING NOTE (read this before debugging SiwA in production)
+//
+//  If Sign in with Apple fails in production with `ASAuthorizationError`
+//  (canceled / unknown / failed), the issue is almost certainly a STALE
+//  PROVISIONING PROFILE, not this code. The capability has to be present
+//  on developer.apple.com for the bundle ID AND in the embedded profile
+//  inside the .ipa. A TestFlight build produced before the capability was
+//  enabled will keep failing every SiwA request even after the capability
+//  is toggled on, because the profile baked into that build predates it.
+//
+//  Fix path (in order of speed):
+//    1. Xcode → target → Signing & Capabilities → toggle "Automatically
+//       manage signing" OFF and then back ON. Xcode regenerates a fresh
+//       profile that includes the SiwA entitlement.
+//    2. Or: Xcode → Settings → Accounts → your team → Download Manual
+//       Profiles. Pulls the freshest provisioning profiles from Apple.
+//    3. Rebuild + re-upload to TestFlight. The OLD build will keep
+//       failing — there is no over-the-air entitlement patch.
+//
+//  Sanity check: `codesign -d --entitlements - VoCal.app` should show
+//  `com.apple.developer.applesignin` in the entitlement dict. If it's
+//  missing, the build was signed without the capability — go back to
+//  step 1.
+//  ──────────────────────────────────────────────────────────────────────────
+//
 //  Flow:
 //    1. Generate a CSPRNG nonce. Hash it to SHA-256 and stamp the hash onto
 //       the ASAuthorizationAppleIDRequest. Apple binds the hash into the

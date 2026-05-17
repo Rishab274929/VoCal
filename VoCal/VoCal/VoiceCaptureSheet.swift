@@ -469,7 +469,14 @@ struct VoiceCaptureSheet: View {
             fat: raw.fat_g,
             loggedAt: .now,
             slot: slot,
-            source: src
+            source: src,
+            sodium_mg: raw.sodium_mg,
+            fiber_g: raw.fiber_g,
+            sugar_g: raw.sugar_g,
+            calcium_mg: raw.calcium_mg,
+            iron_mg: raw.iron_mg,
+            vitamin_c_mg: raw.vitamin_c_mg,
+            potassium_mg: raw.potassium_mg
         )
         transcriptDraft = transcript
         if let reasoning { parseReasoning = reasoning }

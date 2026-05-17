@@ -28,7 +28,7 @@ import Combine
 import Speech
 
 @MainActor
-final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate {
 
     // MARK: - State
 
@@ -47,6 +47,18 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     /// so the coach can follow up ("what about pasta then?") without bloat.
     @Published private(set) var history: [CoachMessage] = []
 
+    /// True while the TTS-fetched mp3 (or local fallback synth) is actively
+    /// playing audio. CoachView observes this to drive the SPEAKING indicator
+    /// — same UI lights for both the ElevenLabs and AVSpeechSynthesizer
+    /// paths so the user can't tell which is in use.
+    @Published private(set) var isSpeaking: Bool = false
+
+    /// User-controlled mute toggle bound to CoachView's speaker icon.
+    /// When false, every TTS fetch is skipped — text still appears in the
+    /// thread but no audio plays (no AVSpeechSynthesizer fallback either,
+    /// since the explicit intent is "silent mode").
+    @Published var voiceEnabled: Bool = true
+
     // MARK: - Internals
 
     private let recorder = SpeechRecorder()
@@ -55,6 +67,22 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     private var lastTranscriptUpdate: Date = .now
     private var transcriptCancellable: AnyCancellable?
     private var todaySnapshot: DailyMacrosSnapshot?
+
+    // MARK: - TTS playback (ElevenLabs via /api/coach/voice)
+    /// AVAudioPlayer holds onto the decoded mp3; we have to retain it for
+    /// the lifetime of playback or it tears down mid-utterance with no
+    /// callback. Kept as a property rather than a local in speakRemote()
+    /// for the same reason.
+    private var audioPlayer: AVAudioPlayer?
+    /// The audio-session category that was active before we forced
+    /// `.playback` for TTS. Restored in audioPlayerDidFinishPlaying so
+    /// other apps (music, podcasts) un-duck correctly.
+    private var priorAudioCategory: AVAudioSession.Category?
+    private var priorAudioMode: AVAudioSession.Mode?
+    /// Token for the in-flight TTS URLSession task. Stored so cancel()
+    /// can drop a pending fetch when the user navigates away or starts
+    /// a new turn before the audio has begun streaming.
+    private var ttsTask: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -122,6 +150,17 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
         if synth.isSpeaking {
             synth.stopSpeaking(at: .immediate)
         }
+        // Drop the in-flight TTS fetch + any actively playing mp3 so the
+        // coach goes truly silent when the user navigates away. Without
+        // these, a slow TTS request would finish 5-15s later and start
+        // playback while the user is on a different screen.
+        ttsTask?.cancel()
+        ttsTask = nil
+        if let player = audioPlayer, player.isPlaying {
+            player.stop()
+        }
+        audioPlayer = nil
+        isSpeaking = false
         // Hand the audio session back to other apps so music/podcasts can
         // resume. Without this, ducked apps stay ducked indefinitely after
         // the user leaves Coach.
@@ -218,25 +257,83 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             phase = .idle
+            isSpeaking = false
+            return
+        }
+        // Voice muted by the user — text reply already landed in history,
+        // so we just stay silent and return the phase to idle.
+        guard voiceEnabled else {
+            phase = .idle
+            isSpeaking = false
             return
         }
         phase = .speaking
-        do {
-            // Use `.mixWithOthers` rather than `.duckOthers` so the coach's
-            // voice doesn't permanently quiet whatever music/podcast the
-            // user has playing — duck/un-duck cycles on every reply are
-            // jarring. `.spokenAudio` mode hints to the OS that this is a
-            // voice stream so it routes correctly over Bluetooth + CarPlay.
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
-            try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
-        } catch {
-            // Best-effort — if audio session fails the synth will still try.
+        isSpeaking = true
+
+        // Cancel any prior TTS fetch so an old reply's audio can't play
+        // on top of a new one (rare, but happens if the user fires two
+        // turns in quick succession).
+        ttsTask?.cancel()
+        ttsTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let mp3 = try await CoachVoiceAPI.fetch(text: trimmed)
+                if Task.isCancelled { return }
+                await self.playRemote(mp3: mp3, fallbackText: trimmed)
+            } catch {
+                // Any non-200 / network / decode failure: silent skip per
+                // spec. Coach has already shown the text reply, so the
+                // user just gets no audio. Don't fall back to AVSpeech
+                // here — the spec says coach must keep working in
+                // text-only mode, NOT "use the OS voice as backup".
+                await MainActor.run {
+                    self.isSpeaking = false
+                    if self.phase == .speaking { self.phase = .idle }
+                }
+            }
         }
-        let utterance = AVSpeechUtterance(string: trimmed)
-        utterance.voice = preferredVoice()
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95
-        utterance.pitchMultiplier = 1.0
-        synth.speak(utterance)
+    }
+
+    /// Decode + play the mp3 buffer that came back from /api/coach/voice.
+    /// Stays @MainActor because AVAudioPlayer init + audio-session calls
+    /// must run on the main thread per Apple's docs.
+    private func playRemote(mp3: Data, fallbackText: String) async {
+        do {
+            // Snapshot the current audio category/mode so we can restore
+            // them after playback. Without this, the next time the user
+            // hits the mic the session is still in .playback mode and
+            // recording can fail with a "deactivated input" error.
+            let session = AVAudioSession.sharedInstance()
+            priorAudioCategory = session.category
+            priorAudioMode = session.mode
+
+            // `.playback` is required to actually emit audio when the
+            // mute switch is on (the coach replying mid-meeting is the
+            // whole point of the voice mode). `.spokenAudio` mode +
+            // `.duckOthers` mirrors the AVSpeechSynth path so a podcast
+            // dips politely instead of mixing or cutting out.
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+
+            let player = try AVAudioPlayer(data: mp3)
+            player.delegate = self
+            audioPlayer = player
+            if !player.prepareToPlay() {
+                throw NSError(domain: "VoiceCoach.TTS", code: -2, userInfo: [NSLocalizedDescriptionKey: "prepareToPlay returned false"])
+            }
+            if !player.play() {
+                throw NSError(domain: "VoiceCoach.TTS", code: -3, userInfo: [NSLocalizedDescriptionKey: "play returned false"])
+            }
+        } catch {
+            // Decode / playback failure — clean up the audio session and
+            // stay silent. We deliberately do NOT fall back to local
+            // AVSpeechSynth here; the user got the text reply already
+            // and a sudden Siri-voice would be jarring.
+            audioPlayer = nil
+            isSpeaking = false
+            releaseAudioSessionAfterPlayback()
+            if phase == .speaking { phase = .idle }
+        }
     }
 
     private func preferredVoice() -> AVSpeechSynthesisVoice? {
@@ -259,22 +356,100 @@ final class VoiceCoachSession: NSObject, ObservableObject, AVSpeechSynthesizerDe
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             self?.releaseAudioSessionAfterPlayback()
+            self?.isSpeaking = false
             self?.phase = .idle
         }
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             self?.releaseAudioSessionAfterPlayback()
+            self?.isSpeaking = false
             self?.phase = .idle
         }
     }
 
-    /// Drop the `.playback` audio session so music/podcasts can un-duck.
-    /// Without this every TTS reply leaves the system in a half-ducked state
-    /// until the OS reclaims the session opportunistically — users notice it
-    /// as "Spotify is quieter for no reason."
+    // MARK: - AVAudioPlayerDelegate (remote TTS mp3 playback)
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.audioPlayer = nil
+            self.isSpeaking = false
+            self.releaseAudioSessionAfterPlayback()
+            if self.phase == .speaking { self.phase = .idle }
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        // Treat decode errors the same as a successful-but-empty finish:
+        // clean up and silently bail. Coach text reply already showed.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.audioPlayer = nil
+            self.isSpeaking = false
+            self.releaseAudioSessionAfterPlayback()
+            if self.phase == .speaking { self.phase = .idle }
+        }
+    }
+
+    /// Restore the audio-session category that was active before the TTS
+    /// reply, then deactivate so music/podcasts can un-duck. Without the
+    /// category restore the session stays in `.playback` mode, which can
+    /// break the speech recognizer the next time the user taps the mic.
     private func releaseAudioSessionAfterPlayback() {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        let session = AVAudioSession.sharedInstance()
+        if let prior = priorAudioCategory {
+            try? session.setCategory(prior, mode: priorAudioMode ?? .default)
+        }
+        priorAudioCategory = nil
+        priorAudioMode = nil
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+    }
+}
+
+// MARK: - Coach voice TTS client
+
+/// Wraps POST /api/coach/voice. Returns the raw mp3 bytes on 2xx. Throws
+/// on any non-200 so the caller can decide whether to fall back silently
+/// (VoiceCoachSession.speak does — spec says coach must keep working in
+/// text-only mode if TTS fails).
+enum CoachVoiceAPI {
+    private struct Payload: Codable { let text: String }
+
+    enum Error: Swift.Error, LocalizedError {
+        case badResponse
+        case server(Int)
+        case empty
+        var errorDescription: String? {
+            switch self {
+            case .badResponse: "Bad TTS response."
+            case .server(let s): "TTS HTTP \(s)."
+            case .empty: "Empty TTS body."
+            }
+        }
+    }
+
+    /// Fetch the audio/mpeg body for `text`. 20s timeout because the
+    /// upstream ElevenLabs proxy can be slow on cold starts — anything
+    /// shorter and the very first reply of a session often times out.
+    static func fetch(text: String) async throws -> Data {
+        guard let url = URL(string: "\(APIConfig.baseURL)/coach/voice") else {
+            throw Error.badResponse
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 20
+        req.httpBody = try JSONEncoder().encode(Payload(text: text))
+        await AuthSession.shared.authorize(&req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw Error.badResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Error.server(http.statusCode)
+        }
+        guard !data.isEmpty else { throw Error.empty }
+        return data
     }
 }
 

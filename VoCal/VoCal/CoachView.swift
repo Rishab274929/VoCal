@@ -16,6 +16,13 @@ struct CoachView: View {
     @StateObject private var session = VoiceCoachSession()
     @State private var input: String = ""
 
+    /// User-controlled audio mute. Persists across launches so a user who
+    /// always studies in quiet places doesn't have to re-mute every time
+    /// they open Coach. Mirror of the SharedPreferences key on the Flutter
+    /// side so the same setting feels consistent across platforms (note:
+    /// not synced — each install holds its own value).
+    @AppStorage("vocal.coachVoiceEnabled") private var voiceEnabled: Bool = true
+
     /// Combined transcript: AppModel's persisted history + this session's
     /// in-memory turns. Lets the user pick up a conversation across launches.
     private var allMessages: [CoachMessage] {
@@ -66,6 +73,13 @@ struct CoachView: View {
                 .padding(.horizontal, 28)
                 .padding(.bottom, 16)
         }
+        .onAppear {
+            // Sync the persisted user preference into the session on first
+            // render. Without this, a user who muted last session would
+            // still hear the first reply this session because the session
+            // defaults voiceEnabled=true.
+            session.voiceEnabled = voiceEnabled
+        }
         .onDisappear { session.cancel() }
         .onChange(of: session.history.count) { _, _ in
             // Mirror VoiceCoachSession turns into the persisted AppModel
@@ -82,16 +96,53 @@ struct CoachView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 12) {
                 Text("COACH")
                     .eyebrow(Theme.Palette.pulse)
                 Spacer()
+                voiceToggle
                 statusBadge
             }
             Text("Talk to it. It knows your day.")
                 .font(Theme.Font.serif(28, weight: .medium))
                 .foregroundStyle(Theme.Palette.bone)
         }
+    }
+
+    /// Top-right speaker icon — taps toggle audio playback for coach replies.
+    /// The icon swaps to a slash when muted so the state is unambiguous at
+    /// a glance. We also `cancel()` an in-flight audio reply on the way to
+    /// muted so the user isn't stuck listening to the current line finish.
+    /// Pulses subtly while `session.isSpeaking` so the user gets visual
+    /// confirmation that audio is actually playing (not just thinking).
+    private var voiceToggle: some View {
+        Button {
+            voiceEnabled.toggle()
+            session.voiceEnabled = voiceEnabled
+            if !voiceEnabled {
+                // Yank any audio that's already playing. cancel() also
+                // drops a pending TTS fetch, so flipping the switch
+                // mid-reply truly silences the coach immediately.
+                session.cancel()
+            }
+        } label: {
+            Image(systemName: voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(voiceEnabled ? Theme.Palette.voltage : Theme.Palette.smoke)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle().strokeBorder(Theme.Palette.hairlineStrong, lineWidth: 1)
+                )
+                .scaleEffect(session.isSpeaking ? 1.08 : 1.0)
+                .animation(
+                    session.isSpeaking
+                        ? .easeInOut(duration: 0.55).repeatForever(autoreverses: true)
+                        : .default,
+                    value: session.isSpeaking
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(voiceEnabled ? "Mute coach voice" : "Unmute coach voice")
     }
 
     @ViewBuilder

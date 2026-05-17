@@ -40,6 +40,11 @@ Set in Cloudflare Pages dashboard → Settings → Environment variables → Sec
 - `OPENROUTER_API_KEY` — fallback. https://openrouter.ai/keys
 - `USDA_FDC_API_KEY` — optional but useful. Free key at
   https://fdc.nal.usda.gov/api-key-signup
+- `ELEVENLABS_API_KEYS` — comma-separated list of ElevenLabs API keys for
+  `/api/coach/voice` TTS. The endpoint rotates on 401/402/429/5xx. Single-key
+  callers can set `ELEVENLABS_API_KEY` instead.
+- `ELEVENLABS_VOICE_ID` (optional) — override the default voice ID
+  (`pNInz6obpgDQGcFmaJgB`, Adam).
 
 Optional bindings:
 
@@ -64,14 +69,56 @@ Both Google and Apple accept optional `link_anonymous_user_id` +
 meals / body_metrics / coach_messages into the new authenticated
 identity. The merge helper lives in `src/lib/identityMerge.ts`.
 
+### Hard-required vs soft-required bearer auth
+
+`src/lib/auth.ts` exposes two helpers:
+
+- `resolveUserId(identity, bodyUserId)` — soft fallback. Prefers a verified
+  JWT, then a body-supplied `user_id`, then `"demo-user"`. Used by parser
+  endpoints whose D1 write is best-effort.
+- `requireUserId(env, request, bodyUserId?)` — hard-required. Throws
+  `AuthRequiredError` if the Authorization header is missing or the JWT
+  fails to verify. Use `authErrorResponse(err, corsHeaders)` to return the
+  standard 401 + `WWW-Authenticate: Bearer` body.
+
+| Endpoint                          | Auth          |
+|-----------------------------------|---------------|
+| `GET  /api/meals`                 | hard-required |
+| `POST /api/meals`                 | hard-required |
+| `PATCH /api/meals/:id`            | hard-required |
+| `DELETE /api/meals/:id`           | hard-required |
+| `POST /api/coach`                 | hard-required |
+| `POST /api/coach/voice`           | hard-required |
+| `POST /api/bodyfat`               | hard-required |
+| `POST /api/voice/parse`           | soft (parser; D1 write best-effort) |
+| `POST /api/photo/parse`           | soft (parser; D1 write best-effort) |
+| `GET  /api/barcode/:code`         | soft (public lookup) |
+| `POST /api/auth/*`                | none (mint tokens) |
+
+Hard-required endpoints return `401 { "error": "auth_required" \| "auth_invalid", "detail": "..." }`
+with a `WWW-Authenticate: Bearer realm="vocal-api"` header. Old clients
+that still send `body.user_id` without a bearer token will see a 401 — a
+deliberate cutover.
+
 ## D1 schema
 
-The schema is in `db/migrations/0001_initial.sql`. The `body_metrics`,
-`meals`, and `coach_messages` tables are all referenced by the identity
-merge helper — if you apply only a subset of migrations, the helper falls
-back to a meals-only merge with a warning logged. Apply with:
+The schema is in `db/migrations/`. Migrations are additive — apply in
+numeric order:
+
+- `0001_initial.sql` — `users`, `meals`, `body_metrics`, `coach_messages`,
+  `integrations`.
+- `0002_meal_micros.sql` — adds optional `sodium_mg`, `fiber_g`, `sugar_g`,
+  `calcium_mg`, `iron_mg` (REAL), `vitamin_c_mg` (REAL), `potassium_mg`
+  columns to `meals`. Existing rows are NULL — the iOS / Flutter clients
+  treat NULL as "unknown". Applied to vocal-prod on 2026-05-16.
+
+Apply with:
 
 ```bash
+# Single-file replay against the live DB:
+wrangler d1 execute vocal-prod --remote --file=db/migrations/0002_meal_micros.sql
+
+# Or the migrations runner (uses wrangler.toml):
 wrangler d1 migrations apply <db-name>
 ```
 
@@ -80,13 +127,17 @@ wrangler d1 migrations apply <db-name>
 `src/lib/rateLimit.ts` is a KV-backed minute-bucket limiter. Limits per
 endpoint:
 
-| Endpoint            | Limit               |
-|---------------------|---------------------|
-| `/api/photo/parse`  | 30 / min / identity |
-| `/api/voice/parse`  | 60 / min / identity |
-| `/api/coach`        | 30 / min / identity |
-| `/api/bodyfat`      | 10 / min / identity |
-| `/api/auth/*`       | 20 / min / IP       |
+| Endpoint                | Limit               |
+|-------------------------|---------------------|
+| `/api/photo/parse`      | 30 / min / identity |
+| `/api/voice/parse`      | 60 / min / identity |
+| `/api/coach`            | 30 / min / identity |
+| `/api/coach/voice`      | 20 / min / identity |
+| `/api/bodyfat`          | 10 / min / identity |
+| `/api/meals` (list)     | 30 / min / identity |
+| `/api/meals` (create)   | 30 / min / identity |
+| `/api/meals/:id` (PATCH/DELETE) | 30 / min / identity (shared bucket) |
+| `/api/auth/*`           | 20 / min / IP       |
 
 When a caller exceeds the limit they get a 429 with a `Retry-After` header
 and a body of `{ "error": "rate_limited", "retry_after_sec": N }`.

@@ -13,10 +13,11 @@
 // Both paths share validation, auth, rate limiting, and the body_metrics
 // write. The response shape is stable: { body_fat_pct, confidence, reasoning }.
 //
-// Auth: PREFERS a verified bearer JWT and falls back to body.user_id for
-// legacy clients. Same pattern as /api/meals.
+// Auth: HARD-REQUIRED bearer JWT. The legacy body.user_id soft fallback
+// was removed once the iOS + Flutter clients both shipped /api/auth/* —
+// old clients will see a 401 (a deliberate cutover).
 
-import { authIdentity, resolveUserId } from "../../../src/lib/auth";
+import { AuthRequiredError, authErrorResponse, requireUserId } from "../../../src/lib/auth";
 import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 import { chat } from "../../../src/ai/llmClient";
 import type { Env } from "../../../src/types";
@@ -95,6 +96,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     body = (await request.json()) as BFBody;
   } catch {
     return json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  // Hard-require bearer JWT. Do this BEFORE the LLM call so an
+  // unauthenticated client can't burn vision-provider credits.
+  let userId: string;
+  try {
+    ({ userId } = await requireUserId(bindings, request, body.user_id));
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS);
+    throw err;
   }
 
   // Anthropometric validation: identical to the heuristic path so a vision
@@ -207,13 +218,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     source = body.front_r2_key && body.side_r2_key ? "r2" : "heuristic";
   }
 
-  // --- Persist as a body_metrics row if we have a user --------------------
+  // --- Persist as a body_metrics row ---------------------------------------
+  // userId is already resolved from the JWT above.
   try {
-    const identity = await authIdentity(request, bindings);
-    const { userId, mismatch } = resolveUserId(identity, body.user_id);
-    if (mismatch) {
-      console.warn("bodyfat: rejecting client user_id, using JWT sub", { jwt: identity.userId, claimed: body.user_id });
-    }
     const now = Date.now();
     if (bindings.DB) {
       await bindings.DB.prepare(

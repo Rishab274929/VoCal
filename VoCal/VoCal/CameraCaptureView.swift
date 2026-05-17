@@ -375,6 +375,11 @@ struct MealPhotoSheet: View {
                     )
             )
             HStack(spacing: 10) {
+                // Toggle mic on/off. The mic is hot the moment the photo
+                // lands (see `.sheet`'s onPicked → startListening), so this
+                // is a "Mute" affordance for users who only want to log via
+                // photo. Tapping Mute discards the in-flight partial — they
+                // can tap Listen again to start a fresh capture.
                 Button {
                     if recorder.isRecording {
                         Task { _ = await recorder.finish() }
@@ -383,9 +388,9 @@ struct MealPhotoSheet: View {
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
+                        Image(systemName: recorder.isRecording ? "mic.slash.fill" : "mic.fill")
                             .font(.system(size: 12, weight: .bold))
-                        Text(recorder.isRecording ? "Stop" : "Hold to speak")
+                        Text(recorder.isRecording ? "Mute" : "Listen")
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(Theme.Palette.ink)
@@ -640,7 +645,14 @@ struct MealPhotoSheet: View {
             fat: m.fat_g,
             loggedAt: .now,
             slot: MealEntry.Slot(rawValue: m.slot) ?? .snack,
-            source: effectiveSource
+            source: effectiveSource,
+            sodium_mg: m.sodium_mg,
+            fiber_g: m.fiber_g,
+            sugar_g: m.sugar_g,
+            calcium_mg: m.calcium_mg,
+            iron_mg: m.iron_mg,
+            vitamin_c_mg: m.vitamin_c_mg,
+            potassium_mg: m.potassium_mg
         )
         appModel.addMeal(entry)
         savedMeal = entry

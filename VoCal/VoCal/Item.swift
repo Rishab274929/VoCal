@@ -27,6 +27,16 @@ struct MealEntry: Identifiable, Hashable, Codable {
     var slot: Slot
     var source: Source
 
+    // MARK: Micronutrients (all optional — backend may omit; older
+    // persisted meals must decode cleanly without them).
+    var sodium_mg: Int? = nil
+    var fiber_g: Int? = nil
+    var sugar_g: Int? = nil
+    var calcium_mg: Int? = nil
+    var iron_mg: Double? = nil
+    var vitamin_c_mg: Double? = nil
+    var potassium_mg: Int? = nil
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -37,7 +47,14 @@ struct MealEntry: Identifiable, Hashable, Codable {
         fat: Int,
         loggedAt: Date,
         slot: Slot,
-        source: Source
+        source: Source,
+        sodium_mg: Int? = nil,
+        fiber_g: Int? = nil,
+        sugar_g: Int? = nil,
+        calcium_mg: Int? = nil,
+        iron_mg: Double? = nil,
+        vitamin_c_mg: Double? = nil,
+        potassium_mg: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -49,6 +66,13 @@ struct MealEntry: Identifiable, Hashable, Codable {
         self.loggedAt = loggedAt
         self.slot = slot
         self.source = source
+        self.sodium_mg = sodium_mg
+        self.fiber_g = fiber_g
+        self.sugar_g = sugar_g
+        self.calcium_mg = calcium_mg
+        self.iron_mg = iron_mg
+        self.vitamin_c_mg = vitamin_c_mg
+        self.potassium_mg = potassium_mg
     }
 }
 
@@ -276,6 +300,31 @@ final class AppModel: ObservableObject {
         Task { await VoCalHealth.shared.write(meal: meal) }
     }
 
+    /// Replace `original` with `updated` in place. Recomputes totals by
+    /// subtracting the original macros and adding the updated. The id is
+    /// preserved by the caller (MealEditSheet) so HealthKit's metadata
+    /// `HKMetadataKeyExternalUUID` keeps matching — delete + write keeps
+    /// Apple Health in sync without orphan samples.
+    ///
+    /// No-op if the original is no longer in the list (eg. user deleted
+    /// from another surface between edit-open and edit-save).
+    func editMeal(_ original: MealEntry, to updated: MealEntry) {
+        guard let idx = meals.firstIndex(of: original) else { return }
+        meals[idx] = updated
+        totals.caloriesEaten = max(0, totals.caloriesEaten - original.calories + updated.calories)
+        totals.proteinEaten  = max(0, totals.proteinEaten  - original.protein  + updated.protein)
+        totals.carbsEaten    = max(0, totals.carbsEaten    - original.carbs    + updated.carbs)
+        totals.fatEaten      = max(0, totals.fatEaten      - original.fat      + updated.fat)
+        DailyMacrosSnapshot.write(from: totals)
+        persist()
+
+        // Mirror to HealthKit: delete old samples (matched by external UUID)
+        // and write fresh ones. Both fire-and-forget so the UI never blocks
+        // on HK. If the user hasn't granted HK auth both calls are no-ops.
+        Task { await VoCalHealth.shared.delete(meal: original) }
+        Task { await VoCalHealth.shared.write(meal: updated) }
+    }
+
     func removeMeal(_ meal: MealEntry) {
         guard let idx = meals.firstIndex(of: meal) else { return }
         meals.remove(at: idx)
@@ -305,6 +354,23 @@ final class AppModel: ObservableObject {
     func updateGoal(daily kcal: Int) {
         totals.calorieGoal = kcal
         profile.dailyCalorieGoal = kcal
+        DailyMacrosSnapshot.write(from: totals)
+        persist()
+    }
+
+    /// Mutate the profile via a closure, then persist + sync the snapshot
+    /// + keep `totals.calorieGoal` aligned with `profile.dailyCalorieGoal`
+    /// (so widgets / intents pick up a new daily-kcal target without a
+    /// separate `updateGoal` call). All edits go through this so we have
+    /// one persistence point.
+    func updateProfile(_ mutate: (inout UserProfile) -> Void) {
+        var copy = profile
+        mutate(&copy)
+        profile = copy
+        // Keep daily-kcal mirror coherent — `DailyMacrosSnapshot` reads from
+        // `totals.calorieGoal`, so if the user just bumped their kcal target
+        // we have to mirror it before we write the snapshot.
+        totals.calorieGoal = profile.dailyCalorieGoal
         DailyMacrosSnapshot.write(from: totals)
         persist()
     }
@@ -426,6 +492,17 @@ struct VoiceParseResponse: Codable {
         var slot: String
         var source: String
         var confidence: Double
+
+        // MARK: Optional micronutrients — present once the backend's
+        // micronutrient parser ships. Until then these decode as nil and
+        // the meal still saves cleanly with macros only.
+        var sodium_mg: Int? = nil
+        var fiber_g: Int? = nil
+        var sugar_g: Int? = nil
+        var calcium_mg: Int? = nil
+        var iron_mg: Double? = nil
+        var vitamin_c_mg: Double? = nil
+        var potassium_mg: Int? = nil
     }
 
     var transcript: String

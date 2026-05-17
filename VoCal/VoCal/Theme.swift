@@ -2,50 +2,67 @@
 //  Theme.swift
 //  VoCal
 //
-//  Editorial-voice design system. Dark-first, ink + lime + coral, with
-//  New York (serif) display + SF Pro body. Every token is opinionated.
+//  Editorial-voice design system. Dark-first monochrome: ink on bone with
+//  pure paper-white as the single emphasis signal. Matches the starfield-
+//  on-black logo. New York (serif) display + SF Pro body.
+//
+//  Design-language pivot notes:
+//   - Lime (voltage) and coral (pulse) hex constants are PRESERVED so any
+//     remaining direct references in screens compile, but the canonical
+//     accent is now `paper` (pure white) for emphasis and `smoke` for
+//     de-emphasis. Use `bone` for an over-goal / subtle warning instead
+//     of coral.
+//   - Macros keep their hues — they're the only color in the system and
+//     they map to a tangible thing (protein, carbs, fat) so removing them
+//     would lose information, not just decoration.
 //
 
 import SwiftUI
 
 enum Theme {
 
-    // MARK: Palette — ink-on-paper, with two electric accents
+    // MARK: Palette — black and white, hairline grays, macro accents only
 
     enum Palette {
         // Surfaces
-        static let ink           = Color(hex: 0x0A0A0B)   // base canvas
+        static let ink           = Color(hex: 0x0A0A0B)   // base canvas — deep black
         static let inkRaised     = Color(hex: 0x121214)   // first elevation
         static let inkSurface    = Color(hex: 0x18181C)   // cards / sheets
         static let inkElevated   = Color(hex: 0x1F1F24)   // popovers / chips
-        static let hairline      = Color.white.opacity(0.07)
-        static let hairlineStrong = Color.white.opacity(0.13)
+        static let hairline      = Color(hex: 0x1F1E1B)   // subtle borders
+        static let hairlineStrong = Color(hex: 0x2E2D29)  // visible borders
 
         // Text
-        static let bone          = Color(hex: 0xF6F4EC)   // primary on dark — warm ivory
+        static let paper         = Color(hex: 0xFFFFFF)   // pure white — hero numerals & emphasis
+        static let bone          = Color(hex: 0xF5F2EA)   // primary on dark — warm off-white
         static let ash           = Color(hex: 0xBDBBB2)   // secondary on dark
         static let smoke         = Color(hex: 0x86847B)   // tertiary on dark
 
-        // Brand voltage
-        static let voltage       = Color(hex: 0xE5FF59)   // lime — the "voice" accent
+        // Legacy accent constants — PRESERVED so screens that still reference
+        // them compile. New work MUST use `paper` for emphasis. The old lime
+        // and coral are not deleted because doing so would break a long tail
+        // of view files we're not touching in this pivot.
+        static let voltage       = Color(hex: 0xE5FF59)   // legacy lime
         static let voltageDeep   = Color(hex: 0xB7D03A)
-        static let pulse         = Color(hex: 0xFF5436)   // coral — the "energy" accent
+        static let pulse         = Color(hex: 0xFF5436)   // legacy coral
         static let pulseDeep     = Color(hex: 0xE03C1F)
 
-        // Macros — chosen to harmonize with ink + voltage
+        // Macros — the only chromatic information in the system. These map
+        // to actual nutrients (P/C/F/fiber) so they survive the pivot.
         static let protein       = Color(hex: 0xFF7A8A)   // dusty rose
         static let carbs         = Color(hex: 0xFFD466)   // amber
         static let fat           = Color(hex: 0x7BB7FF)   // soft sky
         static let fiber         = Color(hex: 0xB7D03A)   // moss
 
-        // Legacy aliases (some callers import these names)
+        // Legacy aliases — point `brand`/`energy` at paper so any
+        // unaudited consumers get the new monochrome accent automatically.
         static let canvas        = ink
         static let surface       = inkSurface
         static let surfaceElevated = inkElevated
-        static let brand         = voltage
-        static let brandSoft     = voltage.opacity(0.6)
-        static let brandDeep     = voltageDeep
-        static let energy        = pulse
+        static let brand         = paper
+        static let brandSoft     = paper.opacity(0.6)
+        static let brandDeep     = bone
+        static let energy        = paper
     }
 
     // MARK: Spacing — generous, editorial rhythm
@@ -100,15 +117,19 @@ enum Theme {
     }
 
     // MARK: Gradients
+    //
+    // Monochrome pivot: voltage/pulse gradients keep their names because
+    // legacy callers reference them, but they now render as pure white
+    // ramps so the screen reads as one editorial monochrome surface.
 
     static let voltageGradient = LinearGradient(
-        colors: [Color(hex: 0xF6FF80), Palette.voltage, Palette.voltageDeep],
+        colors: [Palette.paper, Palette.paper, Palette.bone],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let pulseGradient = LinearGradient(
-        colors: [Color(hex: 0xFF8264), Palette.pulse, Palette.pulseDeep],
+        colors: [Palette.paper, Palette.bone, Palette.ash],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -119,7 +140,7 @@ enum Theme {
         endPoint: .bottom
     )
 
-    static let micGradient = pulseGradient
+    static let micGradient = voltageGradient
     static let brandGradient = voltageGradient
 }
 

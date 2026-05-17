@@ -12,12 +12,37 @@ struct ProfileView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var showingPaywall: Bool
 
+    /// Which profile field the user tapped on. Drives the editor sheet;
+    /// nil means no sheet is currently showing.
+    @State private var editingField: ProfileField?
+
+    /// Identifies the four editable profile attributes shown in the
+    /// stats / profile rows. Each maps to a small sheet variant.
+    enum ProfileField: Identifiable {
+        case dailyKcal
+        case weight
+        case height
+        case sex
+        case birthYear
+
+        var id: Int {
+            switch self {
+            case .dailyKcal: 0
+            case .weight:    1
+            case .height:    2
+            case .sex:       3
+            case .birthYear: 4
+            }
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
                 subscriptionCard
                 statsRow
+                personalCard
                 settingsCard
                 aboutFooter
                 Color.clear.frame(height: 24)
@@ -26,6 +51,12 @@ struct ProfileView: View {
             .padding(.top, 18)
         }
         .scrollIndicators(.hidden)
+        .sheet(item: $editingField) { field in
+            ProfileFieldEditor(field: field)
+                .presentationDetents([.fraction(0.4), .medium])
+                .presentationBackground(Theme.Palette.ink)
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private var header: some View {
@@ -141,30 +172,94 @@ struct ProfileView: View {
 
     private var statsRow: some View {
         HStack(spacing: 10) {
-            statTile(label: "Daily kcal", value: "\(appModel.profile.dailyCalorieGoal)")
-            statTile(label: "Weight", value: "\(Int(appModel.profile.weightLbs)) lb")
-            statTile(label: "Height", value: heightString)
+            statTile(label: "Daily kcal", value: "\(appModel.profile.dailyCalorieGoal)") {
+                editingField = .dailyKcal
+            }
+            statTile(label: "Weight", value: "\(Int(appModel.profile.weightLbs)) lb") {
+                editingField = .weight
+            }
+            statTile(label: "Height", value: heightString) {
+                editingField = .height
+            }
         }
     }
 
-    private func statTile(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label.uppercased())
-                .eyebrow()
-            Text(value)
-                .font(Theme.Font.serif(20, weight: .medium))
-                .foregroundStyle(Theme.Palette.bone)
+    /// Tap on any tile pops the field editor for that attribute. We don't
+    /// inline-edit because steppers / pickers crammed into 3 small tiles
+    /// would shred the visual rhythm of the profile screen.
+    private func statTile(label: String, value: String, onTap: @escaping () -> Void) -> some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label.uppercased())
+                    .eyebrow()
+                Text(value)
+                    .font(Theme.Font.serif(20, weight: .medium))
+                    .foregroundStyle(Theme.Palette.bone)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    .fill(Theme.Palette.inkSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                            .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
+                    )
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .buttonStyle(.plain)
+    }
+
+    /// Sex + birth year — two rows that don't quite fit the three-up stat
+    /// tile grid but still need to be tappable to edit. Hairline separator
+    /// between them matches the settings card pattern.
+    private var personalCard: some View {
+        VStack(spacing: 0) {
+            personalRow(label: "Sex", value: sexLabel) { editingField = .sex }
+            Rectangle()
+                .fill(Theme.Palette.hairline)
+                .frame(height: 1)
+                .padding(.leading, 18)
+            personalRow(label: "Birth year", value: "\(appModel.profile.birthYear)") {
+                editingField = .birthYear
+            }
+        }
         .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
                 .fill(Theme.Palette.inkSurface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
                         .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
                 )
         )
+    }
+
+    private func personalRow(label: String, value: String, onTap: @escaping () -> Void) -> some View {
+        Button(action: onTap) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.Palette.bone)
+                Spacer()
+                Text(value)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.Palette.smoke)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.smoke)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var sexLabel: String {
+        switch appModel.profile.sex {
+        case "m": "Male"
+        case "f": "Female"
+        default:  "Unspecified"
+        }
     }
 
     private var settingsCard: some View {
@@ -247,6 +342,136 @@ struct ProfileView: View {
     private var displayedName: String {
         let n = appModel.profile.displayName.trimmingCharacters(in: .whitespaces)
         return n.isEmpty ? "VoCal user" : n
+    }
+}
+
+// MARK: - Field editor sheet
+//
+// One sheet, five field variants. Each variant calls `updateProfile` on
+// the AppModel, which persists + writes the DailyMacrosSnapshot so
+// widgets/intents pick up the new goal immediately. The sheet auto-
+// dismisses on Save.
+
+private struct ProfileFieldEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    let field: ProfileView.ProfileField
+
+    // Field drafts. Initialized lazily in `task` from current profile so
+    // re-opening the sheet always reflects the latest persisted value.
+    @State private var dailyKcal: Int = 2000
+    @State private var weightLbs: Double = 170
+    @State private var heightIn: Int = 70
+    @State private var sex: String = ""
+    @State private var birthYear: Int = 1995
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                switch field {
+                case .dailyKcal:
+                    Section("Daily calorie target") {
+                        Stepper(value: $dailyKcal, in: 1000...5000, step: 25) {
+                            HStack {
+                                Text("Goal")
+                                Spacer()
+                                Text("\(dailyKcal) kcal")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                case .weight:
+                    Section("Weight (lb)") {
+                        Stepper(value: $weightLbs, in: 60...600, step: 0.5) {
+                            HStack {
+                                Text("Weight")
+                                Spacer()
+                                Text(String(format: "%.1f lb", weightLbs))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                case .height:
+                    Section("Height (in)") {
+                        Stepper(value: $heightIn, in: 36...96) {
+                            HStack {
+                                Text("Height")
+                                Spacer()
+                                Text("\(heightIn / 12)′\(heightIn % 12)″ · \(heightIn) in")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                case .sex:
+                    Section("Sex") {
+                        Picker("Sex", selection: $sex) {
+                            Text("Male").tag("m")
+                            Text("Female").tag("f")
+                            Text("Unspecified").tag("")
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                case .birthYear:
+                    Section("Birth year") {
+                        Picker("Year", selection: $birthYear) {
+                            // Reasonable range — 100yo down to 13yo. Open
+                            // upper bound matches App Store age gates.
+                            let currentYear = Calendar.current.component(.year, from: .now)
+                            ForEach((currentYear - 100)...(currentYear - 13), id: \.self) { y in
+                                Text(String(y)).tag(y)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .labelsHidden()
+                    }
+                }
+            }
+            .navigationTitle(navTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                }
+            }
+        }
+        .task {
+            // Hydrate from current profile each time the sheet opens.
+            dailyKcal = appModel.profile.dailyCalorieGoal
+            weightLbs = appModel.profile.weightLbs
+            heightIn = Int(appModel.profile.heightInches.rounded())
+            sex = appModel.profile.sex
+            birthYear = appModel.profile.birthYear
+        }
+    }
+
+    private var navTitle: String {
+        switch field {
+        case .dailyKcal: "Daily kcal"
+        case .weight:    "Weight"
+        case .height:    "Height"
+        case .sex:       "Sex"
+        case .birthYear: "Birth year"
+        }
+    }
+
+    private func save() {
+        appModel.updateProfile { p in
+            switch field {
+            case .dailyKcal: p.dailyCalorieGoal = dailyKcal
+            case .weight:    p.weightLbs = weightLbs
+            case .height:    p.heightInches = Double(heightIn)
+            case .sex:       p.sex = sex
+            case .birthYear: p.birthYear = birthYear
+            }
+        }
+        dismiss()
     }
 }
 

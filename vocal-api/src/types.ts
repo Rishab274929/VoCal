@@ -15,6 +15,17 @@ export interface ParsedMeal {
   slot: "breakfast" | "lunch" | "dinner" | "snack";
   source: "voice" | "photo" | "manual" | "voice+photo" | "barcode";
   confidence: number;
+  // Optional micronutrients — additive, present only when the matcher / LLM
+  // is confident enough to surface them. The parser MUST omit a field
+  // rather than guess. The iOS / Flutter clients treat missing fields as
+  // "unknown" and don't display them.
+  sodium_mg?: number;
+  fiber_g?: number;
+  sugar_g?: number;
+  calcium_mg?: number;
+  iron_mg?: number;
+  vitamin_c_mg?: number;
+  potassium_mg?: number;
 }
 
 export interface VoiceParseResponse {
@@ -44,6 +55,11 @@ export interface Env {
   // Other infra
   USDA_FDC_API_KEY?: string;
   JWT_SECRET?: string;
+  // ElevenLabs TTS — comma-separated list of keys for rotation on 401/429/5xx.
+  // Single-key callers can set ELEVENLABS_API_KEY instead.
+  ELEVENLABS_API_KEYS?: string;
+  ELEVENLABS_API_KEY?: string;
+  ELEVENLABS_VOICE_ID?: string; // optional override; defaults to "pNInz6obpgDQGcFmaJgB" (Adam)
   GOOGLE_CLIENT_ID_IOS?: string;
   GOOGLE_CLIENT_ID_ANDROID?: string;
   GOOGLE_CLIENT_ID_WEB?: string;
