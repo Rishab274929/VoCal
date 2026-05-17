@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Today\'s calories + protein at a glance.</string>
+    <string name="vocal_session_channel">VoCal session</string>
+    <string name="vocal_session_channel_desc">Quick-access calorie + protein summary while the app is open.</string>
+</resources>

@@ -1,0 +1,369 @@
+// Hard paywall — Flutter port of PaywallSheet.swift. Purchase flow is a
+// sandbox wireframe (callbacks shell RevenueCat behavior).
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../dev_bypass.dart';
+import '../models/models.dart';
+import '../state/app_model.dart';
+import '../theme/theme.dart';
+import '../widgets/components.dart';
+
+Future<void> showPaywallSheet(
+  BuildContext context, {
+  VoidCallback? onSubscribe,
+  VoidCallback? onSkip,
+}) {
+  // When opened from onboarding (onSkip provided) this is a hard gate — no
+  // tap-outside dismissal, no drag-to-dismiss, no Android back button.
+  // The user must hit Subscribe or "Maybe later" explicitly.
+  final isHardGate = onSubscribe != null || onSkip != null;
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: !isHardGate,
+    enableDrag: !isHardGate,
+    useSafeArea: true,
+    backgroundColor: Palette.ink,
+    barrierColor: Colors.black.withOpacity(0.6),
+    builder: (_) => PopScope(
+      canPop: !isHardGate,
+      child: FractionallySizedBox(
+        heightFactor: 0.95,
+        child: PaywallSheet(onSubscribe: onSubscribe, onSkip: onSkip),
+      ),
+    ),
+  );
+}
+
+class PaywallSheet extends StatefulWidget {
+  final VoidCallback? onSubscribe;
+  final VoidCallback? onSkip;
+  const PaywallSheet({super.key, this.onSubscribe, this.onSkip});
+
+  @override
+  State<PaywallSheet> createState() => _PaywallSheetState();
+}
+
+class _PaywallSheetState extends State<PaywallSheet> {
+  bool _annual = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        const Positioned.fill(child: AmbientBackground()),
+        SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
+                child: Row(
+                  children: [
+                    const VoCalWordmark(),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: Palette.voltage,
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Text('PRO',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2,
+                              color: Palette.ink)),
+                    ),
+                    const Spacer(),
+                    // Show close button only when this is NOT a hard gate
+                    // (no onSubscribe + no onSkip = opened from Profile or
+                    // similar voluntary path).
+                    if (widget.onSubscribe == null && widget.onSkip == null)
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).maybePop(),
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Palette.hairlineStrong)),
+                          child: const Icon(Icons.close,
+                              size: 13, color: Palette.ash),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Eyebrow('UPGRADE', color: Palette.pulse),
+                      const SizedBox(height: 12),
+                      Text.rich(TextSpan(children: [
+                        TextSpan(
+                            text: 'Track every chain meal. ',
+                            style: AppType.serif(36,
+                                weight: FontWeight.w500)),
+                        TextSpan(
+                            text: 'By voice.',
+                            style: AppType.serif(36,
+                                weight: FontWeight.w500,
+                                italic: true,
+                                color: Palette.voltage)),
+                      ])),
+                      const SizedBox(height: 12),
+                      Text(
+                          'Unlimited voice logging. Restaurant-aware macros. '
+                          'Photo fact-check. Body fat from selfies. Apple '
+                          'Watch + Live Activity.',
+                          style: AppType.body(14, color: Palette.ash)),
+                      const SizedBox(height: 28),
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: cardDecoration(),
+                        child: Column(
+                          children: [
+                            _feature(Icons.graphic_eq,
+                                'Unlimited voice logs',
+                                'Free is 3/day. Pro: unlimited.'),
+                            _div(),
+                            _feature(Icons.restaurant,
+                                'Restaurant intelligence',
+                                'Top 25 chains, plus agentic search.'),
+                            _div(),
+                            _feature(Icons.center_focus_strong,
+                                'Photo + voice fact-check',
+                                'Snap, answer, log.'),
+                            _div(),
+                            _feature(Icons.accessibility_new,
+                                'BF% from selfies',
+                                'Front + side photo, with confidence band.'),
+                            _div(),
+                            _feature(Icons.watch,
+                                'Watch + Live Activity',
+                                'Log from your wrist or Dynamic Island.'),
+                            _div(),
+                            _feature(Icons.forum,
+                                'Voice nutrition coach',
+                                'Talk to it. It knows your day.'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Row(
+                        children: [
+                          Expanded(
+                              child: _plan(true, '\$39.99', 'year',
+                                  'Save 33%')),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: _plan(
+                                  false, '\$4.99', 'month', null)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
+                child: Column(
+                  children: [
+                    VoltageButton(
+                      title: _annual
+                          ? 'Start free 7-day trial — \$39.99/yr'
+                          : 'Subscribe — \$4.99/mo',
+                      icon: Icons.lock_open,
+                      onTap: () {
+                        // Delegate to the caller's handler if provided —
+                        // onboarding's onSubscribe already calls
+                        // upgradeToPro + finish, so calling it here too
+                        // would double-fire. Only run the local upgrade
+                        // when there's no external subscribe handler
+                        // (e.g. paywall opened from Profile).
+                        if (widget.onSubscribe != null) {
+                          widget.onSubscribe!();
+                        } else {
+                          context.read<AppModel>().upgradeToPro();
+                        }
+                        Navigator.of(context).maybePop();
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Restore',
+                            style:
+                                AppType.body(12, color: Palette.smoke)),
+                        if (widget.onSkip != null) ...[
+                          Text('  ·  ',
+                              style: AppType.body(10,
+                                  color: Palette.smoke)),
+                          GestureDetector(
+                            onTap: () {
+                              // Pop FIRST then notify caller so the parent
+                              // (onboarding) doesn't try to push another
+                              // sheet while this one is still animating
+                              // away — caused a brief frozen-overlay race.
+                              Navigator.of(context).maybePop();
+                              widget.onSkip!();
+                            },
+                            child: Text('Maybe later',
+                                style: AppType.body(12,
+                                    color: Palette.smoke)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    // Dev-mode bypass — quiet ghost link below the
+                    // legitimate footer affordances. Wrapped in
+                    // `DevBypass.enabled` so a release build (constant
+                    // flipped to false) tree-shakes it out entirely.
+                    //
+                    // The hard-gate guards above (PopScope, isDismissible,
+                    // enableDrag) stay intact — this button is the EXPLICIT
+                    // demo-mode escape hatch, separate from the user-facing
+                    // "Maybe later" affordance which is gated to onboarding.
+                    if (DevBypass.enabled) ...[
+                      const SizedBox(height: 10),
+                      Center(
+                        child: GestureDetector(
+                          onTap: () {
+                            // Order matches the "Maybe later" path: grant
+                            // Pro, pop the sheet, THEN notify the caller.
+                            // Notifying before pop would have onboarding's
+                            // _finish() race against this sheet's exit
+                            // animation and we'd see the brief frozen-overlay
+                            // bug the original comment warned about.
+                            final app = context.read<AppModel>();
+                            app.updateProfile(
+                                (p) => p.entitlement = Entitlement.pro);
+                            Navigator.of(context).maybePop();
+                            // If we were opened from onboarding, fire its
+                            // onSkip so the flow advances past the paywall
+                            // step — otherwise the user is stuck staring at
+                            // the now-popped sheet's parent (the ready
+                            // step) with no obvious way out.
+                            widget.onSkip?.call();
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              '› Skip paywall · demo mode',
+                              style: AppType.body(11,
+                                  weight: FontWeight.w500,
+                                  color: Palette.smoke),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _div() => Container(height: 1, color: Palette.hairline);
+
+  Widget _feature(IconData icon, String title, String detail) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+                color: Palette.voltage.withOpacity(0.12),
+                shape: BoxShape.circle),
+            child: Icon(icon, size: 14, color: Palette.voltage),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: AppType.body(14, weight: FontWeight.w600)),
+                Text(detail,
+                    style: AppType.body(11, color: Palette.smoke)),
+              ],
+            ),
+          ),
+          const Icon(Icons.check, size: 14, color: Palette.voltage),
+        ],
+      ),
+    );
+  }
+
+  Widget _plan(bool annual, String price, String per, String? savings) {
+    final active = _annual == annual;
+    return GestureDetector(
+      onTap: () => setState(() => _annual = annual),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Palette.inkSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: active ? Palette.voltage : Palette.hairlineStrong,
+              width: active ? 2 : 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(annual ? 'Annual' : 'Monthly',
+                    style: AppType.body(12,
+                        weight: FontWeight.w600,
+                        color: active ? Palette.voltage : Palette.bone)),
+                const Spacer(),
+                if (savings != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: Palette.voltage,
+                        borderRadius: BorderRadius.circular(20)),
+                    child: Text(savings,
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                            color: Palette.ink)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(price,
+                    style: AppType.serif(28, weight: FontWeight.w500)),
+                const SizedBox(width: 2),
+                Text('/ $per',
+                    style: AppType.body(11, color: Palette.smoke)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
