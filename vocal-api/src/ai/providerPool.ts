@@ -288,28 +288,30 @@ function isRotatableStatus(status: number): boolean {
 // Public entry
 // ---------------------------------------------------------------------------
 
-/** Build the provider list. Order = preference. */
+/** Build the provider list. Order = preference.
+ *  ALL providers use free tiers only — no paid models. */
 function buildProviders(env: Env): Provider[] {
   return [
     {
-      name: "wafer",
-      vision: true,
-      models: ["GLM-5.1"],
-      keys: collectKeys(env, "WAFER"),
-      call: callWafer
-    },
-    {
       name: "gemini",
       vision: true,
-      // Flash is plenty for our JSON-mode parsing and has the largest free quota.
+      // Free tier: ~1500 req/day. Best free vision model available.
       models: ["gemini-2.5-flash", "gemini-1.5-flash"],
       keys: collectKeys(env, "GEMINI"),
       call: callGemini
     },
     {
+      name: "wafer",
+      vision: true,
+      // Referral credits — free until exhausted.
+      models: ["GLM-5.1"],
+      keys: collectKeys(env, "WAFER"),
+      call: callWafer
+    },
+    {
       name: "groq",
       vision: false,
-      // Llama 3.3 70B is excellent for structured JSON; fall back to 3.1 8B for speed.
+      // Free tier: ~14,400 req/day. Extremely fast. Text-only.
       models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
       keys: collectKeys(env, "GROQ"),
       call: callGroq
@@ -317,14 +319,20 @@ function buildProviders(env: Env): Provider[] {
     {
       name: "mistral",
       vision: false,
-      models: ["mistral-small-latest", "open-mistral-7b"],
+      // Free tier available. Text-only.
+      models: ["mistral-small-latest"],
       keys: collectKeys(env, "MISTRAL"),
       call: callMistral
     },
     {
       name: "openrouter",
       vision: true,
-      models: ["openai/gpt-4o-mini"],
+      // ALL :free models — zero cost regardless of account balance.
+      models: [
+        "google/gemma-4-31b-it:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "nvidia/nemotron-nano-12b-v2-vl:free"
+      ],
       keys: collectKeys(env, "OPENROUTER"),
       call: callOpenRouter
     }

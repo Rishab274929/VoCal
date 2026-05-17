@@ -83,7 +83,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // doesn't double-try the same credential.
   const keys = collectKeys(bindings);
   if (keys.length === 0) {
-    return jsonErr(503, "ELEVENLABS_API_KEYS not configured");
+    // No ElevenLabs keys at all — return text for native TTS fallback
+    // rather than a hard error. The user still gets the coach reply spoken.
+    return new Response(JSON.stringify({ text, fallback: "native_tts" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...CORS }
+    });
   }
 
   const voiceId = (bindings.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID).trim();
@@ -141,8 +146,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return jsonErr(502, `TTS upstream rejected request (${res.status})`);
   }
 
-  console.error("coach/voice: all keys exhausted", { tried: keys.length, errors: errors.slice(-3) });
-  return jsonErr(502, "all TTS keys exhausted");
+  // Graceful degradation: instead of a hard 502, return the text as JSON
+  // so the iOS client can fall back to native AVSpeechSynthesizer. The
+  // client distinguishes audio (Content-Type: audio/mpeg) from this
+  // fallback (Content-Type: application/json). Zero-cost, zero-downtime.
+  console.warn("coach/voice: all ElevenLabs keys exhausted, returning text fallback", {
+    tried: keys.length,
+    errors: errors.slice(-3)
+  });
+  return new Response(JSON.stringify({ text, fallback: "native_tts" }), {
+    status: 200,
+    headers: { "Content-Type": "application/json", ...CORS }
+  });
 };
 
 // ---------------------------------------------------------------------------

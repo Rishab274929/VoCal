@@ -28,9 +28,10 @@
 //   6. Add this same reversed-client-ID as the Authorized redirect URI on the
 //      Google console for the iOS client.
 //
-//  SECURITY: the authorization code is bound to a per-request PKCE verifier,
-//  and the OIDC nonce is verified server-side against the ID token returned by
-//  Google's token endpoint before VoCal mints its own JWT.
+//  SECURITY: the authorization code is bound to a per-request PKCE verifier
+//  before VoCal mints its own JWT. Google may omit `nonce` from the ID token
+//  produced by the code exchange, so PKCE is the primary binding for this
+//  flow.
 //
 
 import Foundation
@@ -71,12 +72,14 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
         case notConfigured
         case userCancelled
         case noAuthorizationCode
+        case stateMismatch
         case backend(String)
         var errorDescription: String? {
             switch self {
             case .notConfigured: "Google sign-in isn't configured yet. Paste your iOS client ID."
             case .userCancelled: "Sign-in cancelled."
             case .noAuthorizationCode: "Google didn't return an authorization code."
+            case .stateMismatch: "Google sign-in returned an invalid session state. Try again."
             case .backend(let m): m
             }
         }
@@ -117,8 +120,13 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
         let hashedNonce = Self.sha256Hex(rawNonce)
         let codeVerifier = Self.randomNonce(length: 64)
         let codeChallenge = Self.sha256Base64URL(codeVerifier)
-        let authURL = try buildAuthURL(hashedNonce: hashedNonce, codeChallenge: codeChallenge)
-        let authorizationCode = try await runWebAuthSession(authURL: authURL)
+        let state = Self.randomNonce()
+        let authURL = try buildAuthURL(
+            hashedNonce: hashedNonce,
+            codeChallenge: codeChallenge,
+            state: state
+        )
+        let authorizationCode = try await runWebAuthSession(authURL: authURL, expectedState: state)
         return try await exchangeWithBackend(
             authorizationCode: authorizationCode,
             codeVerifier: codeVerifier,
@@ -131,7 +139,7 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
 
     // MARK: - OAuth URL
 
-    private func buildAuthURL(hashedNonce: String, codeChallenge: String) throws -> URL {
+    private func buildAuthURL(hashedNonce: String, codeChallenge: String, state: String) throws -> URL {
         var c = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         c.queryItems = [
             URLQueryItem(name: "client_id", value: Self.iosClientID),
@@ -141,6 +149,7 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
             URLQueryItem(name: "nonce", value: hashedNonce),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "state", value: state),
             // Force a fresh authorization to surface the account chooser if
             // the user has multiple Google accounts. Without this, Google
             // silently re-uses whichever one is "first" in their cookies.
@@ -152,7 +161,7 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
 
     // MARK: - Web auth session
 
-    private func runWebAuthSession(authURL: URL) async throws -> String {
+    private func runWebAuthSession(authURL: URL, expectedState: String) async throws -> String {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Swift.Error>) in
             let session = ASWebAuthenticationSession(
                 url: authURL,
@@ -170,13 +179,16 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
                     continuation.resume(throwing: Error.noAuthorizationCode)
                     return
                 }
-                if let query = callbackURL.query,
-                   let returnedError = Self.queryValue(name: "error", in: query) {
+                if let returnedError = Self.callbackValue(name: "error", in: callbackURL) {
                     continuation.resume(throwing: Error.backend(returnedError))
                     return
                 }
-                guard let query = callbackURL.query,
-                      let code = Self.queryValue(name: "code", in: query) else {
+                guard let returnedState = Self.callbackValue(name: "state", in: callbackURL),
+                      Self.constantTimeEquals(returnedState, expectedState) else {
+                    continuation.resume(throwing: Error.stateMismatch)
+                    return
+                }
+                guard let code = Self.callbackValue(name: "code", in: callbackURL) else {
                     continuation.resume(throwing: Error.noAuthorizationCode)
                     return
                 }
@@ -256,10 +268,34 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
         for pair in query.split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
             if parts.count == 2 && parts[0] == name {
-                return parts[1].removingPercentEncoding ?? parts[1]
+                let formDecoded = parts[1].replacingOccurrences(of: "+", with: " ")
+                return formDecoded.removingPercentEncoding ?? formDecoded
             }
         }
         return nil
+    }
+
+    private static func callbackValue(name: String, in url: URL) -> String? {
+        if let query = url.query,
+           let value = queryValue(name: name, in: query) {
+            return value
+        }
+        if let fragment = url.fragment,
+           let value = queryValue(name: name, in: fragment) {
+            return value
+        }
+        return nil
+    }
+
+    private static func constantTimeEquals(_ a: String, _ b: String) -> Bool {
+        let aa = Array(a.utf8)
+        let bb = Array(b.utf8)
+        var diff = aa.count ^ bb.count
+        let count = max(aa.count, bb.count)
+        for i in 0..<count {
+            diff |= Int(aa.indices.contains(i) ? aa[i] : 0) ^ Int(bb.indices.contains(i) ? bb[i] : 0)
+        }
+        return diff == 0
     }
 
     private static func randomNonce(length: Int = 32) -> String {

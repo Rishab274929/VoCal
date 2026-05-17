@@ -57,6 +57,7 @@
 		0774B68B2FB94CA800C8E991 /* VoCalWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VoCalWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0774B68D2FB94CA800C8E991 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		0774B68F2FB94CA900C8E991 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		0774B82A2FB9698500C8E991 /* VoCal.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = VoCal.storekit; sourceTree = "<group>"; };
 		A4108ACB4B43EE12880A8ECC /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS11.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		DB82470BB235B4FBBDE88582 /* VoCalWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoCalWatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -149,6 +150,7 @@
 		0774B53C2FB8DB5800C8E991 = {
 			isa = PBXGroup;
 			children = (
+				0774B82A2FB9698500C8E991 /* VoCal.storekit */,
 				0774B5472FB8DB5800C8E991 /* VoCal */,
 				0774B5572FB8DB5900C8E991 /* VoCalTests */,
 				0774B5612FB8DB5900C8E991 /* VoCalUITests */,

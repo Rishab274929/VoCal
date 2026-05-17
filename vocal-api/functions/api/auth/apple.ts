@@ -29,7 +29,7 @@ interface AppleAuthBody {
   authorization_code?: string;
   nonce?: string;
   user_id?: string;
-  full_name?: { given?: string; family?: string };
+  full_name?: { given?: string; family?: string } | string;
   email?: string;
   link_anonymous_user_id?: string;
   link_anonymous_token?: string;
@@ -227,12 +227,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Apple's full name + email are ONLY sent on the very first sign-in;
   // every subsequent call we synthesize "Friend" from what we have. Don't
   // overwrite an existing display name on re-auth.
-  const displayName = (() => {
-    const given = body.full_name?.given?.trim();
-    const family = body.full_name?.family?.trim();
-    if (given || family) return [given, family].filter(Boolean).join(" ").slice(0, 80);
-    return "Friend";
-  })();
+  const displayName = normalizeAppleDisplayName(body.full_name) ?? "Friend";
 
   let isNewUser = false;
   if (env.DB) {
@@ -332,6 +327,18 @@ function constantTimeEqual(a: string, b: string): boolean {
     diff |= (aa[i] ?? 0) ^ (bb[i] ?? 0);
   }
   return diff === 0;
+}
+
+function normalizeAppleDisplayName(fullName: AppleAuthBody["full_name"]): string | null {
+  if (!fullName) return null;
+  if (typeof fullName === "string") {
+    const trimmed = fullName.trim();
+    return trimmed ? trimmed.slice(0, 80) : null;
+  }
+  const given = fullName.given?.trim();
+  const family = fullName.family?.trim();
+  const joined = [given, family].filter(Boolean).join(" ").trim();
+  return joined ? joined.slice(0, 80) : null;
 }
 
 async function verifyRS256(
