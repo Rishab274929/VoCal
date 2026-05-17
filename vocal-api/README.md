@@ -115,15 +115,26 @@ numeric order:
 - `0003_user_entitlements.sql` — adds the `user_entitlements` table used
   by `requirePro()` in `src/lib/auth.ts`. Pro-gated endpoints look up
   this row to decide 200 vs 402.
+- `0004_user_entitlements_original_tx_id.sql` — adds
+  `original_transaction_id` (nullable TEXT) + index. Populated by
+  `/api/entitlements/refresh` from Apple's verifyReceipt response.
+  Stable across renewals; readies the schema for ASSN V2 webhooks.
 
-Apply with:
+Apply with the migrations runner (now that the D1 binding lives at the
+top level of `wrangler.toml`):
 
 ```bash
-# Single-file replay against the live DB:
-wrangler d1 execute vocal-prod --remote --file=db/migrations/0003_user_entitlements.sql
+wrangler d1 migrations apply vocal-prod --remote
+```
 
-# Or the migrations runner (uses wrangler.toml):
-wrangler d1 migrations apply <db-name>
+Single-file replay is still possible for ad-hoc fixes, but if you go
+that route you MUST also insert a row into `d1_migrations` so the
+runner stays in sync:
+
+```bash
+wrangler d1 execute vocal-prod --remote --file=db/migrations/0005_whatever.sql
+wrangler d1 execute vocal-prod --remote \
+  --command "INSERT INTO d1_migrations (name) VALUES ('0005_whatever.sql')"
 ```
 
 ### Manually granting Pro (testers / comps)

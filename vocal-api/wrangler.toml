@@ -2,13 +2,13 @@ name = "vocal"
 compatibility_date = "2025-04-01"
 pages_build_output_dir = "vocal-web/dist"
 
-# D1 database binding for the production environment. Declared here so
-# `wrangler pages deploy` picks it up — without this the prod functions
-# saw env.DB as undefined and the Pro entitlement gate fell through to
-# fail-closed (everything returned 402 pro_required even when there was
-# a legitimate entitlement). Discovered 2026-05-17 while wiring up the
-# user_entitlements table.
-[[env.production.d1_databases]]
+# This is a Cloudflare PAGES project (no Worker). Bindings go at the top
+# level — that's what `wrangler pages deploy` ships, and it's the only
+# location `wrangler d1 migrations apply` (and `migrations list`) will
+# look in. Putting D1 under `[env.production.d1_databases]` works for
+# pages-deploy but hides the binding from the migrations subcommand, so
+# any non-deploy wrangler workflow breaks. Keep it here.
+[[d1_databases]]
 binding = "DB"
 database_name = "vocal-prod"
 database_id = "c1b80f2b-0416-4979-b68d-e048f5d80bd5"
