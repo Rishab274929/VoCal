@@ -26,6 +26,19 @@ pages_build_output_dir = "vocal-web/dist"
 #   - FOOD_KV                     (KV namespace, optional) — 30-day meal cache
 #   - DB                          (D1 database, optional) — meal log persistence
 #
+# Entitlements / paywall:
+#   - APPLE_SHARED_SECRET         (Secret) — app-specific shared secret from
+#                                 App Store Connect → My Apps → App Information
+#                                 → App-Specific Shared Secret. REQUIRED for
+#                                 /api/entitlements/refresh to verify receipts;
+#                                 without it that endpoint returns 503.
+#                                 Pro-gated endpoints (/api/coach,
+#                                 /api/coach/voice, /api/bodyfat,
+#                                 /api/photo/parse, /api/voice/parse) check
+#                                 the user_entitlements table in D1 and
+#                                 return 402 pro_required if the row is
+#                                 missing/expired/is_pro=0.
+#
 # Do NOT put any of these under [vars] in this file — `[vars]` values are
 # plaintext in the deployed config and visible to anyone with build access.
 # Use the Cloudflare dashboard Secrets UI, or `wrangler secret put NAME`.

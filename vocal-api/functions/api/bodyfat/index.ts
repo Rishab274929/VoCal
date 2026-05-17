@@ -17,7 +17,13 @@
 // was removed once the iOS + Flutter clients both shipped /api/auth/* —
 // old clients will see a 401 (a deliberate cutover).
 
-import { AuthRequiredError, authErrorResponse, requireUserId } from "../../../src/lib/auth";
+import {
+  AuthRequiredError,
+  EntitlementRequiredError,
+  authErrorResponse,
+  proRequiredResponse,
+  requirePro
+} from "../../../src/lib/auth";
 import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 import { chat } from "../../../src/ai/llmClient";
 import type { Env } from "../../../src/types";
@@ -98,12 +104,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Hard-require bearer JWT. Do this BEFORE the LLM call so an
-  // unauthenticated client can't burn vision-provider credits.
+  // Pro-gated: vision LLM call costs $$ per request. Bearer JWT
+  // hard-required and an active entitlement row must exist. We do this
+  // BEFORE the LLM call so an unauthenticated or unpaid client can't
+  // burn vision-provider credits. body.user_id is ignored.
   let userId: string;
   try {
-    ({ userId } = await requireUserId(bindings, request, body.user_id));
+    ({ userId } = await requirePro(bindings, request));
   } catch (err) {
+    if (err instanceof EntitlementRequiredError) return proRequiredResponse(err, CORS);
     if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS);
     throw err;
   }

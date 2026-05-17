@@ -87,11 +87,12 @@ identity. The merge helper lives in `src/lib/identityMerge.ts`.
 | `POST /api/meals`                 | hard-required |
 | `PATCH /api/meals/:id`            | hard-required |
 | `DELETE /api/meals/:id`           | hard-required |
-| `POST /api/coach`                 | hard-required |
-| `POST /api/coach/voice`           | hard-required |
-| `POST /api/bodyfat`               | hard-required |
-| `POST /api/voice/parse`           | soft (parser; D1 write best-effort) |
-| `POST /api/photo/parse`           | soft (parser; D1 write best-effort) |
+| `POST /api/coach`                 | hard + **Pro** |
+| `POST /api/coach/voice`           | hard + **Pro** |
+| `POST /api/bodyfat`               | hard + **Pro** |
+| `POST /api/voice/parse`           | hard + **Pro** |
+| `POST /api/photo/parse`           | hard + **Pro** |
+| `POST /api/entitlements/refresh`  | hard-required |
 | `GET  /api/barcode/:code`         | soft (public lookup) |
 | `POST /api/auth/*`                | none (mint tokens) |
 
@@ -111,16 +112,54 @@ numeric order:
   `calcium_mg`, `iron_mg` (REAL), `vitamin_c_mg` (REAL), `potassium_mg`
   columns to `meals`. Existing rows are NULL — the iOS / Flutter clients
   treat NULL as "unknown". Applied to vocal-prod on 2026-05-16.
+- `0003_user_entitlements.sql` — adds the `user_entitlements` table used
+  by `requirePro()` in `src/lib/auth.ts`. Pro-gated endpoints look up
+  this row to decide 200 vs 402.
 
 Apply with:
 
 ```bash
 # Single-file replay against the live DB:
-wrangler d1 execute vocal-prod --remote --file=db/migrations/0002_meal_micros.sql
+wrangler d1 execute vocal-prod --remote --file=db/migrations/0003_user_entitlements.sql
 
 # Or the migrations runner (uses wrangler.toml):
 wrangler d1 migrations apply <db-name>
 ```
+
+### Manually granting Pro (testers / comps)
+
+Until the iOS app ships StoreKit receipt forwarding, populate
+`user_entitlements` by hand:
+
+```bash
+wrangler d1 execute vocal-prod --remote --command \
+  "INSERT INTO user_entitlements (user_id, is_pro, product_id, expires_at, updated_at, source)
+   VALUES ('<jwt-sub>', 1, 'com.EricSpencer.VoCal.pro.lifetime', NULL, $(date +%s)000, 'manual')
+   ON CONFLICT(user_id) DO UPDATE SET is_pro=1, expires_at=NULL, updated_at=excluded.updated_at, source='manual';"
+```
+
+## Pro entitlement gate
+
+Pro-gated endpoints check `user_entitlements` and return **402** with
+`{ "error": "pro_required", "reason": "no_row" | "expired" | "not_pro" }`
+when the row is absent or inactive. The bearer JWT is hard-required;
+anonymous sessions are valid identity but won't have a Pro row, so they
+get 402 (not 401).
+
+| Endpoint                | Pro-gated |
+|-------------------------|-----------|
+| `/api/coach`            | yes       |
+| `/api/coach/voice`      | yes       |
+| `/api/bodyfat`          | yes       |
+| `/api/photo/parse`      | yes       |
+| `/api/voice/parse`      | yes       |
+
+### `/api/entitlements/refresh`
+
+iOS posts a base64 StoreKit receipt; we verify it with Apple's
+`verifyReceipt` and upsert into `user_entitlements`. Requires
+`APPLE_SHARED_SECRET` (App Store Connect → App-Specific Shared Secret);
+without it the endpoint returns 503.
 
 ## Rate limiting
 

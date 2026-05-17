@@ -11,6 +11,13 @@ import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env, VoiceParsePayload } from "../../../src/types";
 import { parseTranscript } from "../../../src/ai/foodParser";
 import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
+import {
+  AuthRequiredError,
+  EntitlementRequiredError,
+  authErrorResponse,
+  proRequiredResponse,
+  requirePro
+} from "../../../src/lib/auth";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -27,11 +34,24 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const bindings = env as unknown as Env & { DB?: D1Database; JWT_SECRET?: string; FOOD_KV?: KVNamespace };
+
   // Rate limit: 60/min/identity. Voice parsing is cheap on the LLM side
   // (text-only) but a real user logs a meal a few times a day at most —
   // 60/min/identity is ~100x normal usage and still blocks abusive volume.
-  const rl = await checkRateLimit(env, request, "voice/parse", 60);
+  const rl = await checkRateLimit(bindings, request, "voice/parse", 60);
   if (!rl.allowed) return rateLimitedResponse(rl, CORS_HEADERS);
+
+  // Pro gate: text LLM call. Moderate per-call cost but adds up at volume.
+  // Bearer JWT hard-required + active entitlement row.
+  let proUserId: string;
+  try {
+    ({ userId: proUserId } = await requirePro(bindings, request));
+  } catch (err) {
+    if (err instanceof EntitlementRequiredError) return proRequiredResponse(err, CORS_HEADERS);
+    if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS_HEADERS);
+    throw err;
+  }
 
   // Pre-flight size check — reject before allocating a large string.
   const contentLength = Number(request.headers.get("content-length") || "0");
@@ -76,11 +96,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Optional: persist meal log to D1. Failures here must not break the parse
   // response — logging is best-effort and offline-tolerant.
   if (env.DB && result.meal) {
-    // Resolve the user_id from the JWT first, falling back to the body field
-    // and then a stable demo bucket. NOTE: the iOS app currently sends
-    // user_id in the request body since it doesn't ship auth yet — once a
-    // real auth layer lands, prefer Authorization-header identity.
-    const userId = (payload.user_id?.trim() || "demo-user").slice(0, 64);
+    // user_id is the JWT sub verified by requirePro above. body.user_id is
+    // ignored to prevent an attacker with a valid Pro token from writing
+    // meals under another user's id.
+    const userId = proUserId;
     const now = Date.now();
     try {
       // Upsert the user row so the FK on meals.user_id succeeds. INSERT OR

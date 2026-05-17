@@ -10,12 +10,21 @@
 // (singular) is accepted as a fallback for single-key dev setups.
 // When every key is exhausted we return a 502.
 //
-// Auth: HARD-REQUIRED bearer JWT. Rate limit 20/min/identity (TTS is
-// expensive and we don't want a runaway client costing a fortune).
+// Auth: HARD-REQUIRED bearer JWT + active Pro entitlement. TTS is the
+// most expensive endpoint by far (~$16/min upstream); the soft-mint
+// helper was removed here so anonymous users see a 402 paywall hand-off
+// instead of burning ElevenLabs credits.
+// Rate limit 20/min/identity on top of the Pro gate.
 
 import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env } from "../../../src/types";
-import { AuthRequiredError, authErrorResponse, requireUserId } from "../../../src/lib/auth";
+import {
+  AuthRequiredError,
+  EntitlementRequiredError,
+  authErrorResponse,
+  proRequiredResponse,
+  requirePro
+} from "../../../src/lib/auth";
 import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 const CORS = {
@@ -41,13 +50,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   let userId: string;
   try {
-    ({ userId } = await requireUserId(bindings, request));
+    ({ userId } = await requirePro(bindings, request));
   } catch (err) {
+    if (err instanceof EntitlementRequiredError) return proRequiredResponse(err, CORS);
     if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS);
     throw err;
   }
-  // userId is only used for the rate-limit identifier above; reference
-  // it explicitly so tsc doesn't flag it as unused.
   void userId;
 
   // Pre-flight size — text is small JSON, no need for a generous cap.

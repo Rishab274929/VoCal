@@ -19,7 +19,13 @@
 import type { PagesFunction } from "@cloudflare/workers-types";
 import type { Env } from "../../../src/types";
 import { chat } from "../../../src/ai/llmClient";
-import { AuthRequiredError, authErrorResponse, requireUserId } from "../../../src/lib/auth";
+import {
+  AuthRequiredError,
+  EntitlementRequiredError,
+  authErrorResponse,
+  proRequiredResponse,
+  requirePro
+} from "../../../src/lib/auth";
 import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit";
 
 const CORS = {
@@ -110,12 +116,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // stops malicious payloads from blowing through the LLM context budget.
   const prompt = rawPrompt.slice(0, 2000);
 
-  // Hard-require a bearer JWT now. body.user_id is accepted only for the
-  // mismatch warning inside requireUserId.
+  // Pro-gated: this is an LLM endpoint with expensive per-call cost. Bearer
+  // JWT is hard-required (no soft-mint) and the user must have an active
+  // entitlement in `user_entitlements`. body.user_id is intentionally
+  // ignored — the JWT sub is the only trusted identity.
   let userId: string;
   try {
-    ({ userId } = await requireUserId(bindings, request, body.user_id));
+    ({ userId } = await requirePro(bindings, request));
   } catch (err) {
+    if (err instanceof EntitlementRequiredError) return proRequiredResponse(err, CORS);
     if (err instanceof AuthRequiredError) return authErrorResponse(err, CORS);
     throw err;
   }
