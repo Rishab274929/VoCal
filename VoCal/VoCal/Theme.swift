@@ -2,26 +2,24 @@
 //  Theme.swift
 //  VoCal
 //
-//  Editorial-voice design system. Dark-first monochrome: ink on bone with
-//  pure paper-white as the single emphasis signal. Matches the starfield-
-//  on-black logo. New York (serif) display + SF Pro body.
+//  Editorial-voice design system. Strict monochrome: ink on bone, with the
+//  microphone as the SOLE chromatic signal — a single red circle that
+//  registers as "record / live". Everything else renders in tinted grays.
 //
-//  Design-language pivot notes:
-//   - Lime (voltage) and coral (pulse) hex constants are PRESERVED so any
-//     remaining direct references in screens compile, but the canonical
-//     accent is now `paper` (pure white) for emphasis and `smoke` for
-//     de-emphasis. Use `bone` for an over-goal / subtle warning instead
-//     of coral.
-//   - Macros keep their hues — they're the only color in the system and
-//     they map to a tangible thing (protein, carbs, fat) so removing them
-//     would lose information, not just decoration.
+//  Design rules (do not soften):
+//   - No hue anywhere except `micRed` and its derivatives.
+//   - Legacy `voltage` / `pulse` constants are kept by NAME only so the
+//     long tail of unaudited call sites compiles; their hex values now
+//     point at grayscale (`paper` / `bone`) so they vanish on render.
+//   - Macros are 4 stops of gray (was rose/amber/sky/moss). The macro
+//     bars now differentiate by tonal weight, not hue.
 //
 
 import SwiftUI
 
 enum Theme {
 
-    // MARK: Palette — black and white, hairline grays, macro accents only
+    // MARK: Palette — strict monochrome, red only on the mic
 
     enum Palette {
         // Surfaces
@@ -38,21 +36,26 @@ enum Theme {
         static let ash           = Color(hex: 0xBDBBB2)   // secondary on dark
         static let smoke         = Color(hex: 0x86847B)   // tertiary on dark
 
-        // Legacy accent constants — PRESERVED so screens that still reference
-        // them compile. New work MUST use `paper` for emphasis. The old lime
-        // and coral are not deleted because doing so would break a long tail
-        // of view files we're not touching in this pivot.
-        static let voltage       = Color(hex: 0xE5FF59)   // legacy lime
-        static let voltageDeep   = Color(hex: 0xB7D03A)
-        static let pulse         = Color(hex: 0xFF5436)   // legacy coral
-        static let pulseDeep     = Color(hex: 0xE03C1F)
+        // Mic accent — the only saturated color in the system. Reads as
+        // "record / live"; reserved for the capture orb and its halo.
+        static let micRed        = Color(hex: 0xE5392C)
+        static let micRedDeep    = Color(hex: 0xB02418)
 
-        // Macros — the only chromatic information in the system. These map
-        // to actual nutrients (P/C/F/fiber) so they survive the pivot.
-        static let protein       = Color(hex: 0xFF7A8A)   // dusty rose
-        static let carbs         = Color(hex: 0xFFD466)   // amber
-        static let fat           = Color(hex: 0x7BB7FF)   // soft sky
-        static let fiber         = Color(hex: 0xB7D03A)   // moss
+        // Legacy chromatic names → repointed to grayscale so any remaining
+        // direct references render as monochrome. Do not introduce new
+        // call sites; prefer `paper` / `bone` / `ash` / `smoke` directly.
+        static let voltage       = paper                  // was lime — now white
+        static let voltageDeep   = bone
+        static let pulse         = paper                  // was coral — now white
+        static let pulseDeep     = bone
+
+        // Macros — 4 grayscale stops, brightest → darkest. Order follows
+        // visual prominence on the macro bar (protein gets the loudest
+        // tone, fiber the quietest).
+        static let protein       = bone                   // brightest
+        static let carbs         = ash                    // light gray
+        static let fat           = smoke                  // mid gray
+        static let fiber         = hairlineStrong         // darkest visible
 
         // Legacy aliases — point `brand`/`energy` at paper so any
         // unaudited consumers get the new monochrome accent automatically.
@@ -118,9 +121,10 @@ enum Theme {
 
     // MARK: Gradients
     //
-    // Monochrome pivot: voltage/pulse gradients keep their names because
-    // legacy callers reference them, but they now render as pure white
-    // ramps so the screen reads as one editorial monochrome surface.
+    // Monochrome surface. `voltageGradient` / `pulseGradient` / `brandGradient`
+    // keep their names for legacy callers but render as white ramps so the
+    // whole UI reads as one editorial grayscale plane. `micGradient` is the
+    // single exception — it's the red record-orb wash.
 
     static let voltageGradient = LinearGradient(
         colors: [Palette.paper, Palette.paper, Palette.bone],
@@ -140,7 +144,11 @@ enum Theme {
         endPoint: .bottom
     )
 
-    static let micGradient = voltageGradient
+    static let micGradient = LinearGradient(
+        colors: [Palette.micRed, Palette.micRedDeep],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
     static let brandGradient = voltageGradient
 }
 

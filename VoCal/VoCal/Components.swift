@@ -301,27 +301,30 @@ struct MicButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Outer pulse — white glow expanding (no coral)
+                // Outer pulse — red halos expanding outward. The mic is the
+                // only saturated color in the entire app; here it reads as
+                // "live / recording" the way a tally lamp on a camera does.
                 Circle()
-                    .strokeBorder(Theme.Palette.paper.opacity(0.45), lineWidth: 1.5)
+                    .strokeBorder(Theme.Palette.micRed.opacity(0.55), lineWidth: 1.5)
                     .scaleEffect(pulse ? 1.7 : 1)
                     .opacity(pulse ? 0 : 1)
                 Circle()
-                    .strokeBorder(Theme.Palette.paper.opacity(0.28), lineWidth: 1)
+                    .strokeBorder(Theme.Palette.micRed.opacity(0.35), lineWidth: 1)
                     .scaleEffect(pulse ? 1.45 : 1)
                     .opacity(pulse ? 0 : 1)
 
-                // Core orb — paper-white ring on ink (the brand statement
-                // in monochrome: the mic is the single bright artifact on
-                // the page, the way the starfield logo concentrates light)
+                // Core orb — the RED CIRCLE around the microphone. Ring is
+                // micRed at full chroma; interior stays ink so the mic glyph
+                // reads as white-on-black inside a red boundary.
                 Circle()
                     .fill(Theme.Palette.ink)
                     .overlay(
-                        Circle().strokeBorder(Theme.Palette.paper, lineWidth: 2)
+                        Circle().strokeBorder(Theme.Palette.micRed, lineWidth: 2)
                     )
-                    .shadow(color: Theme.Palette.paper.opacity(0.35), radius: 14)
+                    .shadow(color: Theme.Palette.micRed.opacity(0.45), radius: 14)
 
-                // Rotating tick marks (audio meter feel)
+                // Rotating tick marks (audio meter feel) — kept monochrome
+                // so the red ring stays the singular focal point.
                 ZStack {
                     ForEach(0..<24, id: \.self) { i in
                         Rectangle()
