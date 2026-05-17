@@ -25,8 +25,16 @@ struct CoachView: View {
 
     /// Combined transcript: AppModel's persisted history + this session's
     /// in-memory turns. Lets the user pick up a conversation across launches.
+    ///
+    /// De-dupe by id: every `session.history` append is mirrored into
+    /// `appModel.coachMessages` via the onChange below, so without this
+    /// filter the same `CoachMessage` (same UUID) would render twice — once
+    /// from each array — for every turn after the mirror fires.
     private var allMessages: [CoachMessage] {
-        appModel.coachMessages + session.history
+        var seen = Set<UUID>()
+        return (appModel.coachMessages + session.history).filter {
+            seen.insert($0.id).inserted
+        }
     }
 
     var body: some View {
