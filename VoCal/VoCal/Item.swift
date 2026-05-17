@@ -455,6 +455,11 @@ struct DailyMacrosSnapshot: Codable, Sendable {
         if let data = try? encoder.encode(snap) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
+        // Mirror to the App Group suite the home-screen widget reads, and
+        // ping `WidgetCenter` so the tile refreshes immediately. Lives in
+        // `WidgetBridge` so the widget's flat schema stays isolated from
+        // this fuller intent-facing snapshot.
+        WidgetBridge.publish(from: totals)
     }
 
     nonisolated static func read() -> DailyMacrosSnapshot? {

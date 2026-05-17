@@ -133,6 +133,18 @@ struct MealPhotoSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Optional pre-captured image. When non-nil (set by
+    /// `UnifiedCameraSheet`'s shutter handoff) the sheet skips the
+    /// library/camera-picker chooser and lands directly on the review +
+    /// describe flow. Falling back to nil keeps the existing standalone
+    /// open-from-quick-action behavior intact.
+    private let prefilledImage: UIImage?
+
+    init(prefilledImage: UIImage? = nil) {
+        self.prefilledImage = prefilledImage
+        self._image = State(initialValue: prefilledImage)
+    }
+
     @State private var image: UIImage?
     @State private var showingCamera = false
     @State private var showingLibrary = false
@@ -203,6 +215,16 @@ struct MealPhotoSheet: View {
                 startListening()
             }
             .ignoresSafeArea()
+        }
+        .onAppear {
+            // If a caller (UnifiedCameraSheet shutter) handed us a fully-
+            // captured image, kick the mic the moment we land so the user
+            // can describe the plate without a second tap. Mirrors the
+            // `onPicked` callback that fires when the user shoots from
+            // inside this sheet's own CameraPicker.
+            if prefilledImage != nil {
+                startListening()
+            }
         }
         .onDisappear { recorder.stop() }
         .onChange(of: recorder.partialTranscript) { _, new in

@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0774B68E2FB94CA900C8E991 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0774B68D2FB94CA800C8E991 /* WidgetKit.framework */; };
+		0774B6902FB94CA900C8E991 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0774B68F2FB94CA900C8E991 /* SwiftUI.framework */; };
+		0774B6A12FB94CAA00C8E991 /* VoCalWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0774B68B2FB94CA800C8E991 /* VoCalWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		0774B5552FB8DB5900C8E991 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,17 +27,63 @@
 			remoteGlobalIDString = 0774B5442FB8DB5800C8E991;
 			remoteInfo = VoCal;
 		};
+		0774B69F2FB94CAA00C8E991 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0774B53D2FB8DB5800C8E991 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0774B68A2FB94CA800C8E991;
+			remoteInfo = VoCalWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0774B6A62FB94CAA00C8E991 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0774B6A12FB94CAA00C8E991 /* VoCalWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0774B5452FB8DB5800C8E991 /* VoCal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoCal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0774B5542FB8DB5900C8E991 /* VoCalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoCalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0774B55E2FB8DB5900C8E991 /* VoCalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoCalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0774B68B2FB94CA800C8E991 /* VoCalWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VoCalWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0774B68D2FB94CA800C8E991 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		0774B68F2FB94CA900C8E991 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A4108ACB4B43EE12880A8ECC /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS11.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		DB82470BB235B4FBBDE88582 /* VoCalWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoCalWatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0774B6862FB9491E00C8E991 /* Exceptions for "VoCal" folder in "VoCal" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 0774B5442FB8DB5800C8E991 /* VoCal */;
+		};
+		0774B6A52FB94CAA00C8E991 /* Exceptions for "VoCalWidget" folder in "VoCalWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 0774B68A2FB94CA800C8E991 /* VoCalWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		0774B5472FB8DB5800C8E991 /* VoCal */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0774B6862FB9491E00C8E991 /* Exceptions for "VoCal" folder in "VoCal" target */,
+			);
 			path = VoCal;
 			sourceTree = "<group>";
 		};
@@ -43,6 +95,19 @@
 		0774B5612FB8DB5900C8E991 /* VoCalUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = VoCalUITests;
+			sourceTree = "<group>";
+		};
+		0774B6912FB94CA900C8E991 /* VoCalWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0774B6A52FB94CAA00C8E991 /* Exceptions for "VoCalWidget" folder in "VoCalWidgetExtension" target */,
+			);
+			path = VoCalWidget;
+			sourceTree = "<group>";
+		};
+		E50A0328CFCDBFE149D9A25F /* VoCalWatchApp */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoCalWatchApp;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +134,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0774B6882FB94CA800C8E991 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0774B6902FB94CA900C8E991 /* SwiftUI.framework in Frameworks */,
+				0774B68E2FB94CA900C8E991 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,7 +152,10 @@
 				0774B5472FB8DB5800C8E991 /* VoCal */,
 				0774B5572FB8DB5900C8E991 /* VoCalTests */,
 				0774B5612FB8DB5900C8E991 /* VoCalUITests */,
+				0774B6912FB94CA900C8E991 /* VoCalWidget */,
+				0774B68C2FB94CA800C8E991 /* Frameworks */,
 				0774B5462FB8DB5800C8E991 /* Products */,
+				E50A0328CFCDBFE149D9A25F /* VoCalWatchApp */,
 			);
 			sourceTree = "<group>";
 		};
@@ -88,8 +165,28 @@
 				0774B5452FB8DB5800C8E991 /* VoCal.app */,
 				0774B5542FB8DB5900C8E991 /* VoCalTests.xctest */,
 				0774B55E2FB8DB5900C8E991 /* VoCalUITests.xctest */,
+				0774B68B2FB94CA800C8E991 /* VoCalWidgetExtension.appex */,
+				DB82470BB235B4FBBDE88582 /* VoCalWatchApp.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0774B68C2FB94CA800C8E991 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0774B68D2FB94CA800C8E991 /* WidgetKit.framework */,
+				0774B68F2FB94CA900C8E991 /* SwiftUI.framework */,
+				1CC4C1784CBDBDE4159FCC52 /* watchOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		1CC4C1784CBDBDE4159FCC52 /* watchOS */ = {
+			isa = PBXGroup;
+			children = (
+				A4108ACB4B43EE12880A8ECC /* Foundation.framework */,
+			);
+			name = watchOS;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,17 +199,17 @@
 				0774B5412FB8DB5800C8E991 /* Sources */,
 				0774B5422FB8DB5800C8E991 /* Frameworks */,
 				0774B5432FB8DB5800C8E991 /* Resources */,
+				0774B6A62FB94CAA00C8E991 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0774B6A02FB94CAA00C8E991 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				0774B5472FB8DB5800C8E991 /* VoCal */,
 			);
 			name = VoCal;
-			packageProductDependencies = (
-			);
 			productName = VoCal;
 			productReference = 0774B5452FB8DB5800C8E991 /* VoCal.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +231,6 @@
 				0774B5572FB8DB5900C8E991 /* VoCalTests */,
 			);
 			name = VoCalTests;
-			packageProductDependencies = (
-			);
 			productName = VoCalTests;
 			productReference = 0774B5542FB8DB5900C8E991 /* VoCalTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,11 +252,29 @@
 				0774B5612FB8DB5900C8E991 /* VoCalUITests */,
 			);
 			name = VoCalUITests;
-			packageProductDependencies = (
-			);
 			productName = VoCalUITests;
 			productReference = 0774B55E2FB8DB5900C8E991 /* VoCalUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		0774B68A2FB94CA800C8E991 /* VoCalWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0774B6A22FB94CAA00C8E991 /* Build configuration list for PBXNativeTarget "VoCalWidgetExtension" */;
+			buildPhases = (
+				0774B6872FB94CA800C8E991 /* Sources */,
+				0774B6882FB94CA800C8E991 /* Frameworks */,
+				0774B6892FB94CA800C8E991 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0774B6912FB94CA900C8E991 /* VoCalWidget */,
+			);
+			name = VoCalWidgetExtension;
+			productName = VoCalWidgetExtension;
+			productReference = 0774B68B2FB94CA800C8E991 /* VoCalWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -184,6 +297,9 @@
 						CreatedOnToolsVersion = 26.0.1;
 						TestTargetID = 0774B5442FB8DB5800C8E991;
 					};
+					0774B68A2FB94CA800C8E991 = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
 				};
 			};
 			buildConfigurationList = 0774B5402FB8DB5800C8E991 /* Build configuration list for PBXProject "VoCal" */;
@@ -203,6 +319,7 @@
 				0774B5442FB8DB5800C8E991 /* VoCal */,
 				0774B5532FB8DB5900C8E991 /* VoCalTests */,
 				0774B55D2FB8DB5900C8E991 /* VoCalUITests */,
+				0774B68A2FB94CA800C8E991 /* VoCalWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +340,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		0774B55C2FB8DB5900C8E991 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0774B6892FB94CA800C8E991 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +377,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0774B6872FB94CA800C8E991 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +396,11 @@
 			isa = PBXTargetDependency;
 			target = 0774B5442FB8DB5800C8E991 /* VoCal */;
 			targetProxy = 0774B55F2FB8DB5900C8E991 /* PBXContainerItemProxy */;
+		};
+		0774B6A02FB94CAA00C8E991 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0774B68A2FB94CA800C8E991 /* VoCalWidgetExtension */;
+			targetProxy = 0774B69F2FB94CAA00C8E991 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -401,6 +537,8 @@
 				DEVELOPMENT_TEAM = QAWD9U9CF6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoCal/Info.plist;
+				INFOPLIST_KEY_CFBundleURLTypes = "( { CFBundleURLName = \"com.googleusercontent.apps.877358530849-mef6vo3adi3oidccq610ifv7u7oqjp3c\"; CFBundleURLSchemes = ( \"com.googleusercontent.apps.877358530849-mef6vo3adi3oidccq610ifv7u7oqjp3c\" ); } )";
 				INFOPLIST_KEY_NSCameraUsageDescription = "VoCal uses the camera to fact-check your meals and capture body photos for body-fat estimates.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "VoCal can read your steps and active energy to nudge your daily calorie target.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "VoCal writes your logged calories and macros to Apple Health.";
@@ -441,6 +579,8 @@
 				DEVELOPMENT_TEAM = QAWD9U9CF6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoCal/Info.plist;
+				INFOPLIST_KEY_CFBundleURLTypes = "( { CFBundleURLName = \"com.googleusercontent.apps.877358530849-mef6vo3adi3oidccq610ifv7u7oqjp3c\"; CFBundleURLSchemes = ( \"com.googleusercontent.apps.877358530849-mef6vo3adi3oidccq610ifv7u7oqjp3c\" ); } )";
 				INFOPLIST_KEY_NSCameraUsageDescription = "VoCal uses the camera to fact-check your meals and capture body photos for body-fat estimates.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "VoCal can read your steps and active energy to nudge your daily calorie target.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "VoCal writes your logged calories and macros to Apple Health.";
@@ -554,6 +694,68 @@
 			};
 			name = Release;
 		};
+		0774B6A32FB94CAA00C8E991 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = VoCalWidget/VoCalWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoCalWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = VoCalWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCal.VoCalWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0774B6A42FB94CAA00C8E991 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = VoCalWidget/VoCalWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QAWD9U9CF6;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoCalWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = VoCalWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.EricSpencer.VoCal.VoCalWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -589,6 +791,15 @@
 			buildConfigurations = (
 				0774B56F2FB8DB5900C8E991 /* Debug */,
 				0774B5702FB8DB5900C8E991 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0774B6A22FB94CAA00C8E991 /* Build configuration list for PBXNativeTarget "VoCalWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0774B6A32FB94CAA00C8E991 /* Debug */,
+				0774B6A42FB94CAA00C8E991 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

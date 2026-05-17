@@ -544,23 +544,22 @@ struct EditorialTabBar: View {
     }
 
     @Binding var selection: Tab
+    /// Long-press on the center mic opens the "Log a meal" chooser
+    /// (photo / saved / database). The chooser is one gesture away while
+    /// the primary tap target remains voice — the brand statement.
+    var onAdd: () -> Void
+    /// Primary tap on the center mic. Fires the voice capture path; this
+    /// is the muscle-memory action and the home tab's headline interaction.
     var onMic: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             tabButton(.today)
             tabButton(.progress)
-            // Mic sits INLINE in the center slot rather than floating with
-            // an offset. The old floating overlay was extending the
-            // perceived bar height by ~30pt + the FAB's shadow radius, and
-            // overhanging into content above. Inlined, it's just a button.
-            //
-            // Note: MicButton's rotating tick marks render at -(size*0.42)
-            // from the orb center. With size=52 that's ~22pt above the orb,
-            // so the slot needs vertical room — DON'T pull it up with a
-            // negative top padding (the old `-2` clipped the topmost tick
-            // against the bar's hairline border).
-            MicButton(action: onMic, size: 52)
+            // Middle slot: the brand mic orb. Tap fires voice capture;
+            // long-press opens the chooser. Slot width matches surrounding
+            // tab buttons' rhythm.
+            micSlot
                 .frame(width: 86)
             tabButton(.coach)
             tabButton(.profile)
@@ -574,6 +573,19 @@ struct EditorialTabBar: View {
                 }
                 .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    /// The center mic — restored as the primary tab-bar CTA. `MicButton`
+    /// handles the tap (voice). A `simultaneousGesture` LongPressGesture
+    /// fires the chooser so photo / saved / database are still one
+    /// gesture away without crowding the visual center.
+    private var micSlot: some View {
+        MicButton(action: onMic, size: 52)
+            .accessibilityHint("Tap to log with voice. Long-press for photo, saved foods, or the food database.")
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45)
+                    .onEnded { _ in onAdd() }
+            )
     }
 
     private func tabButton(_ tab: Tab) -> some View {

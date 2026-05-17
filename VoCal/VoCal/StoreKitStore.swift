@@ -11,10 +11,10 @@
 //  config flag needed on our side — sandbox transactions arrive through
 //  the same Transaction.updates stream.
 //
-//  RevenueCat path (optional): when you create the VoCal project at
-//  https://app.revenuecat.com and paste the iOS API key into APIConfig,
-//  this store can hand off entitlement queries to RC. Until then, we
-//  source of truth straight from Apple via Transaction.currentEntitlements.
+//  Server entitlement path: local StoreKit remains the device source of truth
+//  for purchase UX, then the app posts the App Store receipt to
+//  /api/entitlements/refresh so Cloudflare can populate user_entitlements.
+//  Pro-gated backend endpoints require that server row.
 //
 //  Lifecycle: `StoreKitStore.shared` is a process-wide singleton. The
 //  transaction listener spins up on first access (from `VoCalApp` at
@@ -59,6 +59,7 @@ final class StoreKitStore: ObservableObject {
     @Published private(set) var state: LoadState = .idle
     @Published private(set) var isPurchasing = false
     @Published private(set) var hasPro = false
+    @Published private(set) var lastServerSyncAt: Date?
     @Published var lastError: String?
 
     /// Mirror of `hasPro` written to UserDefaults so a cold launch can paint
@@ -67,6 +68,17 @@ final class StoreKitStore: ObservableObject {
     static let entitlementCacheKey = "vocal.entitlement.pro.v1"
 
     private var transactionListener: Task<Void, Never>?
+    private var lastServerSyncAttemptAt: Date?
+
+    private struct EntitlementRefreshResponse: Decodable {
+        let is_pro: Bool
+        let product_id: String?
+        let expires_at: Int64?
+    }
+
+    private struct APIError: Decodable {
+        let error: String?
+    }
 
     private init() {
         // Seed `hasPro` from the cached value so the UI doesn't flicker
@@ -110,7 +122,7 @@ final class StoreKitStore: ObservableObject {
         for await result in Transaction.unfinished {
             await handle(verificationResult: result)
         }
-        await refreshEntitlement()
+        await refreshEntitlement(forceServerSync: true, surfaceSyncErrors: false)
     }
 
     // MARK: - Loading
@@ -125,7 +137,19 @@ final class StoreKitStore: ObservableObject {
             products = fetched.sorted { lhs, rhs in
                 lhs.id == Self.annualID && rhs.id != Self.annualID
             }
-            state = .loaded
+            // `Product.products(for:)` does NOT throw when the store returns
+            // an empty set — it just yields []. The most common cause in the
+            // simulator is that the Xcode scheme has no StoreKit Configuration
+            // file selected, so the local store has zero products to vend.
+            // Surface that explicitly instead of leaving the paywall stuck
+            // on "$4.99 / month" placeholder prices with no way to buy.
+            if products.isEmpty {
+                let msg = "No products returned. In Simulator: enable the StoreKit Configuration file in Edit Scheme → Run → Options. In TestFlight/App Store: products may still be propagating in App Store Connect."
+                state = .failed(msg)
+                lastError = msg
+            } else {
+                state = .loaded
+            }
             await refreshEntitlement()
         } catch {
             state = .failed(error.localizedDescription)
@@ -185,7 +209,7 @@ final class StoreKitStore: ObservableObject {
             lastError = "Restore failed: \(error.localizedDescription)"
             return
         }
-        await refreshEntitlement()
+        await refreshEntitlement(forceServerSync: true, surfaceSyncErrors: true)
         if !priorEntitlement && !hasPro {
             // Sync succeeded but no eligible purchase exists for this Apple ID.
             lastError = "No prior purchase found for this Apple ID."
@@ -196,7 +220,11 @@ final class StoreKitStore: ObservableObject {
 
     /// True if the user currently owns an active Pro subscription.
     /// Drives the @Published `hasPro` flag plus the UserDefaults cache.
-    func refreshEntitlement() async {
+    @discardableResult
+    func refreshEntitlement(
+        forceServerSync: Bool = false,
+        surfaceSyncErrors: Bool = false
+    ) async -> Bool {
         var found = false
         for await result in Transaction.currentEntitlements {
             // Only trust VERIFIED entitlements. An unverified result here
@@ -215,6 +243,95 @@ final class StoreKitStore: ObservableObject {
         }
         hasPro = found
         UserDefaults.standard.set(found, forKey: Self.entitlementCacheKey)
+        if found {
+            await syncServerEntitlement(force: forceServerSync, surfaceErrors: surfaceSyncErrors)
+        }
+        return found
+    }
+
+    @discardableResult
+    func syncServerEntitlement(force: Bool = false, surfaceErrors: Bool = true) async -> Bool {
+        guard hasPro else { return false }
+        let now = Date()
+        if !force, let last = lastServerSyncAttemptAt, now.timeIntervalSince(last) < 30 {
+            return true
+        }
+        lastServerSyncAttemptAt = now
+
+        guard let receiptURL = Bundle.main.appStoreReceiptURL else {
+            if surfaceErrors {
+                lastError = "App Store receipt unavailable. Restore purchases and try again."
+            }
+            return false
+        }
+
+        let receiptData: Data
+        do {
+            receiptData = try Data(contentsOf: receiptURL)
+        } catch {
+            if surfaceErrors {
+                lastError = "App Store receipt unavailable. Restore purchases and try again."
+            }
+            return false
+        }
+
+        guard !receiptData.isEmpty else {
+            if surfaceErrors {
+                lastError = "App Store receipt is empty. Restore purchases and try again."
+            }
+            return false
+        }
+
+        guard let url = URL(string: "\(APIConfig.baseURL)/entitlements/refresh") else {
+            if surfaceErrors { lastError = "Bad entitlement sync URL." }
+            return false
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 20
+        await AuthSession.shared.authorize(&req)
+        req.httpBody = try? JSONEncoder().encode([
+            "receipt_data": receiptData.base64EncodedString()
+        ])
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                if surfaceErrors { lastError = "Bad entitlement sync response." }
+                return false
+            }
+            if (200..<300).contains(http.statusCode) {
+                let decoded = try JSONDecoder().decode(EntitlementRefreshResponse.self, from: data)
+                if decoded.is_pro {
+                    lastServerSyncAt = Date()
+                    return true
+                }
+                if surfaceErrors {
+                    lastError = "Apple receipt did not include an active VoCal Pro subscription."
+                }
+                return false
+            }
+
+            let msg = (try? JSONDecoder().decode(APIError.self, from: data).error) ?? "HTTP \(http.statusCode)"
+            if surfaceErrors {
+                switch http.statusCode {
+                case 401:
+                    lastError = "Sign in again to sync Pro with VoCal."
+                case 503:
+                    lastError = "VoCal Pro is active on this device, but server receipt validation is not configured yet."
+                default:
+                    lastError = "Couldn't sync Pro with VoCal: \(msg)"
+                }
+            }
+            return false
+        } catch {
+            if surfaceErrors {
+                lastError = "Couldn't sync Pro with VoCal: \(error.localizedDescription)"
+            }
+            return false
+        }
     }
 
     @discardableResult
@@ -223,7 +340,7 @@ final class StoreKitStore: ObservableObject {
         case .verified(let txn):
             // Finish the transaction so Apple stops re-delivering it on launch.
             await txn.finish()
-            await refreshEntitlement()
+            await refreshEntitlement(forceServerSync: true, surfaceSyncErrors: true)
             return Self.productIDs.contains(txn.productID)
         case .unverified(_, let error):
             // SECURITY: never grant entitlement on an unverified transaction.

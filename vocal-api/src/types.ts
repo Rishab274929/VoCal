@@ -68,6 +68,7 @@ export interface Env {
   // extra audiences (e.g. a Services ID for Apple sign-in on the web).
   APPLE_BUNDLE_ID?: string;
   APPLE_AUDIENCES?: string;
+  APPLE_SHARED_SECRET?: string;
   FOOD_KV?: KVNamespace;
   DB?: D1Database;
 }

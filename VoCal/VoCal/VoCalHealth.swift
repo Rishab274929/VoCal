@@ -91,12 +91,21 @@ final class VoCalHealth: ObservableObject {
     /// as a cheap gate to avoid trying a save before the prompt is done.
     var isAuthorizedRequested: Bool { didRequestAuthorization }
 
-    /// Write a meal's calories + macros to HealthKit. No-ops if HealthKit
-    /// is unavailable or we haven't asked for auth yet. If the user denied,
-    /// the underlying save throws — we surface that via `lastWriteError`
-    /// rather than crash.
+    /// Write a meal's calories + macros to HealthKit. Triggers the system
+    /// authorization prompt on first call (we intentionally avoid prompting
+    /// at app launch — see `VoCalApp.swift`). If the user denies, the
+    /// underlying save throws — we surface that via `lastWriteError` rather
+    /// than crash. Subsequent calls re-use the prior auth state.
     func write(meal: MealEntry) async {
-        guard let store, didRequestAuthorization else { return }
+        guard let store else { return }
+        // Lazy auth: the first meal save is the contextual moment for HK
+        // permission. If we've never asked, ask now and continue regardless
+        // of the user's response (a denial just means the save below will
+        // throw, which is already handled).
+        if !didRequestAuthorization {
+            _ = await requestAuthorization()
+        }
+        guard didRequestAuthorization else { return }
 
         var samples: [HKQuantitySample] = []
         let start = meal.loggedAt
@@ -147,9 +156,16 @@ final class VoCalHealth: ObservableObject {
         }
     }
 
-    /// Write a body metric (weight + body fat %) to HealthKit.
+    /// Write a body metric (weight + body fat %) to HealthKit. Triggers the
+    /// system authorization prompt on first call — same lazy-auth pattern as
+    /// `write(meal:)` so the prompt arrives at a contextual moment rather
+    /// than at app launch.
     func write(bodyMetric m: BodyMetric) async {
-        guard let store, didRequestAuthorization else { return }
+        guard let store else { return }
+        if !didRequestAuthorization {
+            _ = await requestAuthorization()
+        }
+        guard didRequestAuthorization else { return }
         var samples: [HKQuantitySample] = []
         let date = m.measuredAt
 

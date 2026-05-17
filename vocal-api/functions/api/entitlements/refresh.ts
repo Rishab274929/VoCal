@@ -24,11 +24,12 @@
 // it, this endpoint returns 503 (Apple's API requires it for
 // auto-renewable subscriptions).
 //
-// Product IDs accepted as VoCal Pro:
+// Product IDs accepted as VoCal Pro (must match StoreKitStore.swift +
+// VoCal.storekit + App Store Connect exactly — receipt validation upserts
+// `user_entitlements.product_id` and the row is the gate for /api/coach,
+// /api/coach/voice, /api/bodyfat, /api/photo/parse, /api/voice/parse):
 //   com.EricSpencer.VoCal.pro.monthly
-//   com.EricSpencer.VoCal.pro.yearly
-//   com.EricSpencer.VoCal.pro.lifetime
-// (Adjust ALLOWED_PRODUCT_IDS below if your bundle layout differs.)
+//   com.EricSpencer.VoCal.pro.annual
 //
 // Rate limit: 10/min/identity. Receipt validation hits Apple's servers,
 // which are reliable but not free; we don't need a busy iOS client
@@ -63,8 +64,7 @@ const MAX_RECEIPT_BYTES = 256 * 1024;
 // rejected — never silently grant Pro for an unknown product.
 const ALLOWED_PRODUCT_IDS = new Set<string>([
   "com.EricSpencer.VoCal.pro.monthly",
-  "com.EricSpencer.VoCal.pro.yearly",
-  "com.EricSpencer.VoCal.pro.lifetime"
+  "com.EricSpencer.VoCal.pro.annual"
 ]);
 
 interface RefreshBody {

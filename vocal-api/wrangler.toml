@@ -1,6 +1,7 @@
 name = "vocal"
 compatibility_date = "2025-04-01"
 pages_build_output_dir = "vocal-web/dist"
+migrations_dir = "db/migrations"
 
 # D1 database binding for the production environment. Declared here so
 # `wrangler pages deploy` picks it up — without this the prod functions

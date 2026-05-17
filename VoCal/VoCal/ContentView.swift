@@ -21,8 +21,13 @@ struct ContentView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selection: EditorialTabBar.Tab = .today
     @State private var showingVoice = false
-    @State private var showingPhoto = false
-    @State private var showingBarcode = false
+    /// Replaces the previously-separate `showingPhoto` and `showingBarcode`
+    /// flags — the same camera surface now handles both intents.
+    @State private var showingUnifiedCamera = false
+    /// Mid-tab "+" picker — sheet of choices (camera / saved / database).
+    @State private var showingAddPicker = false
+    @State private var showingSavedFoods = false
+    @State private var showingFoodDatabase = false
     @State private var showingPaywall = false
     @AppStorage("vocal.dailyVoiceCount") private var dailyVoiceCount: Int = 0
     @AppStorage("vocal.dailyVoiceDate") private var dailyVoiceDate: String = ""
@@ -94,7 +99,7 @@ struct ContentView: View {
 
             Group {
                 switch selection {
-                case .today:    TodayView(showingVoice: $showingVoice, showingPhoto: $showingPhoto, showingBarcode: $showingBarcode)
+                case .today:    TodayView(showingVoice: $showingVoice, showingUnifiedCamera: $showingUnifiedCamera)
                 case .progress: ProgressScreen()
                 case .coach:    CoachView()
                 case .profile:  ProfileView(showingPaywall: $showingPaywall)
@@ -103,9 +108,11 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            EditorialTabBar(selection: $selection) {
-                requestVoiceCapture()
-            }
+            EditorialTabBar(
+                selection: $selection,
+                onAdd: { showingAddPicker = true },
+                onMic: { requestVoiceCapture() }
+            )
         }
         .background(Theme.Palette.ink.ignoresSafeArea())
         .sheet(isPresented: $showingVoice) {
@@ -114,14 +121,40 @@ struct ContentView: View {
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showingPhoto) {
-            MealPhotoSheet()
+        .sheet(isPresented: $showingUnifiedCamera) {
+            UnifiedCameraSheet()
+                .presentationDetents([.large])
+                .presentationBackground(.black)
+                .presentationDragIndicator(.visible)
+        }
+        // Middle "+" tab → action picker. A confirmation dialog reads as a
+        // native iOS choose-one-of-three list and avoids inventing a new
+        // sheet style for what is essentially a router. The three handlers
+        // present the actual feature sheets below.
+        .confirmationDialog(
+            "Log a meal",
+            isPresented: $showingAddPicker,
+            titleVisibility: .visible
+        ) {
+            Button("Take a photo / scan barcode") {
+                showingUnifiedCamera = true
+            }
+            Button("Saved foods") {
+                showingSavedFoods = true
+            }
+            Button("Food database") {
+                showingFoodDatabase = true
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showingSavedFoods) {
+            SavedFoodsSheet()
                 .presentationDetents([.large])
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showingBarcode) {
-            BarcodeScannerSheet()
+        .sheet(isPresented: $showingFoodDatabase) {
+            FoodDatabaseSheet()
                 .presentationDetents([.large])
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)

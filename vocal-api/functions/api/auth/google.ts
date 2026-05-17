@@ -1,6 +1,8 @@
 // POST /api/auth/google
 //
-// Body: { id_token: string }
+// Body: { authorization_code, code_verifier, redirect_uri } from the iOS
+// OAuth code+PKCE flow. For compatibility with older clients we also accept
+// { id_token }, then validate it the same way.
 // Returns: { user_id, token, expires_at, email?, name?, picture?, is_new_user }
 //
 // Verifies a Google ID token by hitting Google's tokeninfo endpoint (the
@@ -14,9 +16,19 @@ import { checkRateLimit, rateLimitedResponse } from "../../../src/lib/rateLimit"
 
 interface GoogleAuthBody {
   id_token?: string;
+  authorization_code?: string;
+  code_verifier?: string;
+  redirect_uri?: string;
+  nonce?: string;
   /** Optional: hand off an anonymous session's rows to this new identity. */
   link_anonymous_user_id?: string;
   link_anonymous_token?: string;
+}
+
+interface GoogleTokenResponse {
+  id_token?: string;
+  error?: string;
+  error_description?: string;
 }
 
 interface GoogleTokenInfo {
@@ -30,6 +42,10 @@ interface GoogleTokenInfo {
   picture?: string;
   given_name?: string;
   family_name?: string;
+}
+
+interface GoogleIDPayload {
+  nonce?: string;
 }
 
 const CORS = {
@@ -74,8 +90,47 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
-  const idToken = body.id_token?.trim();
-  if (!idToken) return json({ error: "id_token required" }, 400);
+  let idToken = body.id_token?.trim();
+  const authCode = body.authorization_code?.trim();
+  if (!idToken) {
+    if (!authCode) return json({ error: "authorization_code or id_token required" }, 400);
+    const codeVerifier = body.code_verifier?.trim();
+    const redirectUri = body.redirect_uri?.trim();
+    if (!codeVerifier) return json({ error: "code_verifier required" }, 400);
+    if (!redirectUri) return json({ error: "redirect_uri required" }, 400);
+
+    // Native installed-app OAuth code exchange. iOS public clients do not use a
+    // client secret; the PKCE verifier is the proof that binds this request to
+    // the authorization request the app launched.
+    const clientId = env.GOOGLE_CLIENT_ID_IOS?.trim();
+    if (!clientId) {
+      console.error("google auth: refusing code exchange — GOOGLE_CLIENT_ID_IOS not configured");
+      return json({ error: "Server not configured for Google sign-in" }, 503);
+    }
+    let tokenBody: GoogleTokenResponse;
+    try {
+      const res = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          code: authCode,
+          code_verifier: codeVerifier,
+          grant_type: "authorization_code",
+          redirect_uri: redirectUri
+        })
+      });
+      tokenBody = (await res.json().catch(() => ({}))) as GoogleTokenResponse;
+      if (!res.ok) {
+        const detail = tokenBody.error_description || tokenBody.error || `HTTP ${res.status}`;
+        return json({ error: `Google rejected authorization_code: ${detail.slice(0, 200)}` }, 401);
+      }
+    } catch (err) {
+      return json({ error: `Google code exchange failed: ${(err as Error).message}` }, 502);
+    }
+    idToken = tokenBody.id_token?.trim();
+    if (!idToken) return json({ error: "Google token response missing id_token" }, 401);
+  }
 
   // --- Verify with Google ---
   // tokeninfo handles signature verification, expiry, audience, issuer for us.
@@ -107,6 +162,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   if (!info.sub || typeof info.sub !== "string") {
     return json({ error: "id_token missing sub" }, 401);
+  }
+  const expectedNonce = body.nonce?.trim();
+  if (expectedNonce) {
+    const payload = decodeIDTokenPayload(idToken);
+    if (!payload?.nonce || !constantTimeEqual(payload.nonce, expectedNonce)) {
+      return json({ error: "nonce mismatch" }, 401);
+    }
   }
   // Reject unverified emails — without this an attacker can use a fresh
   // Google account with an unverified email to claim someone else's address
@@ -211,3 +273,33 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     ...(mergeErrors.length ? { merge_errors: mergeErrors } : {})
   });
 };
+
+function decodeIDTokenPayload(idToken: string): GoogleIDPayload | null {
+  const parts = idToken.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/") + "===".slice((parts[1].length + 3) % 4);
+    return JSON.parse(new TextDecoder().decode(base64Decode(padded))) as GoogleIDPayload;
+  } catch {
+    return null;
+  }
+}
+
+function base64Decode(input: string): Uint8Array {
+  const raw = atob(input);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aa = enc.encode(a);
+  const bb = enc.encode(b);
+  let diff = aa.length ^ bb.length;
+  const len = Math.max(aa.length, bb.length);
+  for (let i = 0; i < len; i++) {
+    diff |= (aa[i] ?? 0) ^ (bb[i] ?? 0);
+  }
+  return diff === 0;
+}

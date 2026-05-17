@@ -115,6 +115,9 @@ final class AuthSession: ObservableObject {
         // common single-device case. If the backend merge fails, the local
         // log is still intact — worst case the user has to re-log on a
         // second device.
+        Task { @MainActor in
+            _ = await StoreKitStore.shared.syncServerEntitlement(force: true, surfaceErrors: false)
+        }
     }
 
     /// Sign in with Apple. Same anon-merge semantics as Google: if we were
@@ -182,6 +185,9 @@ final class AuthSession: ObservableObject {
         provider = .apple
         isAuthenticated = true
         Keychain.save(snap, key: Self.keychainKey)
+        Task { @MainActor in
+            _ = await StoreKitStore.shared.syncServerEntitlement(force: true, surfaceErrors: false)
+        }
     }
 
     // MARK: - Public surface
@@ -222,6 +228,36 @@ final class AuthSession: ObservableObject {
         }
     }
 
+    /// Capture an `X-Vocal-Anon-*` triplet from a response. The server emits
+    /// these when an endpoint mints a fresh anon session for an unauthed
+    /// caller (see `requireUserIdOrMint` server-side). Only persist if we
+    /// don't already have a real Google/Apple session — never downgrade a
+    /// signed-in identity to anon based on a response header.
+    func captureMintedSessionIfNeeded(from response: HTTPURLResponse) {
+        guard provider == .anonymous || current == nil else { return }
+        guard
+            let uid = response.value(forHTTPHeaderField: "X-Vocal-Anon-User-Id"),
+            let tok = response.value(forHTTPHeaderField: "X-Vocal-Anon-Token"),
+            let expStr = response.value(forHTTPHeaderField: "X-Vocal-Anon-Expires-At"),
+            let expMs = Int64(expStr)
+        else { return }
+        let snap = Snapshot(
+            userID: uid,
+            token: tok,
+            expiresAt: Date(timeIntervalSince1970: TimeInterval(expMs) / 1000),
+            deviceID: current?.deviceID ?? Self.loadOrCreateDeviceID(),
+            provider: .anonymous,
+            email: nil,
+            displayName: nil,
+            pictureURL: nil
+        )
+        current = snap
+        userID = snap.userID
+        provider = .anonymous
+        isAuthenticated = true
+        Keychain.save(snap, key: Self.keychainKey)
+    }
+
     /// Erase the local session. Next request will create a fresh anon user.
     ///
     /// - Parameter clearLocalData: when true, also wipes the persisted meal
@@ -246,6 +282,12 @@ final class AuthSession: ObservableObject {
             // and widget don't keep reading the previous user's totals.
             UserDefaults.standard.removeObject(forKey: DailyMacrosSnapshot.defaultsKey)
             UserDefaults.standard.removeObject(forKey: StoreKitStore.entitlementCacheKey)
+            // Widget reads from the App Group suite, NOT standard defaults —
+            // clearing standard above wouldn't reach it, so the home-screen
+            // tile would keep showing the previous user's totals until the
+            // next mutation. Clear both.
+            UserDefaults(suiteName: WidgetBridge.suiteName)?
+                .removeObject(forKey: WidgetBridge.snapshotKey)
         }
     }
 

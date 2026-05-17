@@ -90,18 +90,12 @@ final class AppleSignIn: NSObject, ObservableObject {
         let user_id: String
         let token: String
         let expires_at: Int64
-        let is_new: Bool
+        let is_new_user: Bool?
     }
 
-    /// In-flight raw nonce for the active authorization request. Currently
-    /// the backend `/api/auth/apple` contract doesn't accept a raw nonce
-    /// field — Apple's signature on the identity_token is the primary
-    /// integrity guarantee, and the JWT's `nonce` claim itself binds the
-    /// hashed value the client sent in the request. We keep the raw nonce
-    /// stashed here so a future contract change (e.g. server-side raw-nonce
-    /// → SHA-256 comparison for belt-and-suspenders replay defense) can be
-    /// flipped on by simply adding `"nonce": currentRawNonce` to the POST
-    /// body in `exchangeWithBackend` without re-plumbing the auth flow.
+    /// In-flight raw nonce for the active authorization request. The backend
+    /// hashes this value and compares it with the signed identity_token's
+    /// `nonce` claim before issuing a VoCal JWT.
     private var currentRawNonce: String?
 
     /// Bridges the delegate-based ASAuthorizationController API into a
@@ -171,11 +165,7 @@ final class AppleSignIn: NSObject, ObservableObject {
     /// and return the JWT response.
     ///
     /// Reuses the raw nonce stashed by `prepareNonce()` so we don't lose
-    /// replay defense between the request and the callback. If the
-    /// nonce was never prepared (programmer error: caller forgot
-    /// `onRequest`), we still attempt the exchange — the backend will
-    /// reject the identity_token's nonce claim and surface the failure
-    /// cleanly, rather than us silently dropping the auth.
+    /// replay defense between the request and the callback.
     func completeAuthorization(
         credential: ASAuthorizationAppleIDCredential,
         linkAnonymousUserID: String? = nil,
@@ -189,6 +179,10 @@ final class AppleSignIn: NSObject, ObservableObject {
               let authorizationCode = String(data: authorizationCodeData, encoding: .utf8) else {
             throw Error.missingAuthorizationCode
         }
+        guard let rawNonce = currentRawNonce else {
+            throw Error.backend("Apple sign-in nonce was not prepared. Try again.")
+        }
+        defer { currentRawNonce = nil }
 
         // full_name + email are nil on every sign-in AFTER the first.
         // Server is responsible for persisting them on first contact.
@@ -203,6 +197,7 @@ final class AppleSignIn: NSObject, ObservableObject {
         return try await exchangeWithBackend(
             identityToken: identityToken,
             authorizationCode: authorizationCode,
+            nonce: rawNonce,
             userID: credential.user,
             fullName: fullName,
             email: credential.email,
@@ -228,6 +223,7 @@ final class AppleSignIn: NSObject, ObservableObject {
     private func exchangeWithBackend(
         identityToken: String,
         authorizationCode: String,
+        nonce: String,
         userID: String,
         fullName: String?,
         email: String?,
@@ -249,6 +245,7 @@ final class AppleSignIn: NSObject, ObservableObject {
         var payload: [String: Any] = [
             "identity_token": identityToken,
             "authorization_code": authorizationCode,
+            "nonce": nonce,
             "user_id": userID
         ]
         if let fullName  = fullName  { payload["full_name"] = fullName }

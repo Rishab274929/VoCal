@@ -13,7 +13,18 @@ import Foundation
 enum DevBypass {
     /// Controls visibility of demo-mode bypass buttons across the app.
     /// Read at view-render time, so flipping in code recompiles immediately.
+    ///
+    /// Compile-time guarded so Release / TestFlight / App Store builds
+    /// NEVER show the "Skip · demo" buttons. If you want testers to skip
+    /// onboarding + paywall in TestFlight, flip this to a plain
+    /// `static let enabled: Bool = true` (and remember to flip back before
+    /// App Store submission — leaving demo affordances in a Release build
+    /// is a guaranteed App Review rejection).
+    #if DEBUG
     static let enabled: Bool = true
+    #else
+    static let enabled: Bool = false
+    #endif
 
     /// Default profile applied when the user taps "Skip onboarding".
     /// Mid-range defaults so the app has sensible totals out of the box.

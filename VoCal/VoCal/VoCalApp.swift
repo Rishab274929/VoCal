@@ -51,7 +51,13 @@ struct RootView: View {
             // is close to expiry. Network failure is non-fatal — the rest
             // of the app falls back to unauthenticated requests.
             _ = try? await AuthSession.shared.currentToken()
-            await VoCalHealth.shared.requestAuthorization()
+            // HealthKit authorization is intentionally NOT requested here.
+            // Prompting the user for Health permission at app launch is a
+            // poor first impression — it appears before they've seen what
+            // VoCal does. We defer the prompt to two contextual moments:
+            //   1. Profile → Apple Health row tap (explicit opt-in), or
+            //   2. First meal save (lazy bootstrap inside VoCalHealth.write)
+            // so the prompt arrives after the user has signaled intent.
             // Cold-launch drain of any meals Siri logged while the app was
             // suspended. Mirrors the foreground-resume drain below; without
             // both legs, Siri-logged meals would sit in UserDefaults until

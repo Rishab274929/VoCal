@@ -3,14 +3,14 @@
 //  VoCal
 //
 //  Google OAuth via ASWebAuthenticationSession — no Google SDK required.
-//  We use the OAuth 2.0 implicit / "PKCE for native apps" flow:
+//  We use the OAuth 2.0 authorization-code + PKCE flow for native apps:
 //    1. Spin up an ASWebAuthenticationSession pointing at
-//       https://accounts.google.com/o/oauth2/v2/auth with response_type=id_token
+//       https://accounts.google.com/o/oauth2/v2/auth with response_type=code
 //    2. User signs in via Safari View Controller (handles 2FA, passkeys, etc.)
-//    3. Google redirects to com.EricSpencer.VoCal:/oauth/callback#id_token=...
-//    4. We extract the id_token, POST it to /api/auth/google, persist the
-//       resulting VoCal JWT in the Keychain, and the rest of the app works
-//       exactly like the anonymous flow.
+//    3. Google redirects to com.EricSpencer.VoCal:/oauth/callback?code=...
+//    4. We POST the code + PKCE verifier to /api/auth/google; the backend
+//       exchanges it with Google, verifies the ID token, then returns our VoCal
+//       JWT. The rest of the app works exactly like the anonymous flow.
 //
 //  Why not the Google SDK? Adding GoogleSignIn-iOS via SPM means modifying
 //  the .xcodeproj, GoogleService-Info.plist juggling, and an extra ~5 MB
@@ -28,11 +28,9 @@
 //   6. Add this same reversed-client-ID as the Authorized redirect URI on the
 //      Google console for the iOS client.
 //
-//  SECURITY: this flow is hardened against replay attacks via the
-//  OIDC `nonce` claim. We generate a random nonce, embed its SHA-256 in
-//  the Google auth URL, and verify the returned id_token's `nonce` claim
-//  matches before trusting the token. The id_token JWS signature itself is
-//  verified server-side at /api/auth/google by checking Google's JWKS.
+//  SECURITY: the authorization code is bound to a per-request PKCE verifier,
+//  and the OIDC nonce is verified server-side against the ID token returned by
+//  Google's token endpoint before VoCal mints its own JWT.
 //
 
 import Foundation
@@ -48,7 +46,7 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
     /// Looks like: `1234567890-abcdefgh.apps.googleusercontent.com`
     /// Leave the placeholder in place to expose a clear runtime error rather
     /// than silently fail; the Sign-In button will surface "Not configured."
-    static let iosClientID = "PASTE_YOUR_IOS_CLIENT_ID.apps.googleusercontent.com"
+    static let iosClientID = "877358530849-mef6vo3adi3oidccq610ifv7u7oqjp3c.apps.googleusercontent.com"
 
     /// The reversed form Google requires as the OAuth redirect scheme.
     /// `com.googleusercontent.apps.1234-abcdefgh`
@@ -60,6 +58,10 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
         return "com.googleusercontent.apps.\(base)"
     }
 
+    static var redirectURI: String {
+        "\(redirectScheme):/oauth/callback"
+    }
+
     private var session: ASWebAuthenticationSession?
 
     @Published private(set) var isSigningIn = false
@@ -68,15 +70,13 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
     enum Error: Swift.Error, LocalizedError {
         case notConfigured
         case userCancelled
-        case noIDToken
-        case nonceMismatch
+        case noAuthorizationCode
         case backend(String)
         var errorDescription: String? {
             switch self {
             case .notConfigured: "Google sign-in isn't configured yet. Paste your iOS client ID."
             case .userCancelled: "Sign-in cancelled."
-            case .noIDToken:     "Google didn't return an id_token."
-            case .nonceMismatch: "Google sign-in security check failed. Try again."
+            case .noAuthorizationCode: "Google didn't return an authorization code."
             case .backend(let m): m
             }
         }
@@ -115,15 +115,15 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
 
         let rawNonce = Self.randomNonce()
         let hashedNonce = Self.sha256Hex(rawNonce)
-        let authURL = try buildAuthURL(hashedNonce: hashedNonce)
-        let idToken = try await runWebAuthSession(authURL: authURL)
-        // OIDC replay defense: the id_token's `nonce` claim must equal the
-        // SHA-256 of the random value we sent in the auth URL. If a
-        // malicious app intercepts the redirect URI (e.g., a competing app
-        // registered the same scheme), this catches the replay.
-        try Self.verifyNonceClaim(in: idToken, expectedHashedNonce: hashedNonce)
+        let codeVerifier = Self.randomNonce(length: 64)
+        let codeChallenge = Self.sha256Base64URL(codeVerifier)
+        let authURL = try buildAuthURL(hashedNonce: hashedNonce, codeChallenge: codeChallenge)
+        let authorizationCode = try await runWebAuthSession(authURL: authURL)
         return try await exchangeWithBackend(
-            idToken: idToken,
+            authorizationCode: authorizationCode,
+            codeVerifier: codeVerifier,
+            redirectURI: Self.redirectURI,
+            nonce: hashedNonce,
             linkAnonymousUserID: linkAnonymousUserID,
             linkAnonymousToken: linkAnonymousToken
         )
@@ -131,17 +131,16 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
 
     // MARK: - OAuth URL
 
-    private func buildAuthURL(hashedNonce: String) throws -> URL {
+    private func buildAuthURL(hashedNonce: String, codeChallenge: String) throws -> URL {
         var c = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         c.queryItems = [
             URLQueryItem(name: "client_id", value: Self.iosClientID),
-            URLQueryItem(name: "redirect_uri", value: "\(Self.redirectScheme):/oauth/callback"),
-            URLQueryItem(name: "response_type", value: "id_token"),
+            URLQueryItem(name: "redirect_uri", value: Self.redirectURI),
+            URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "scope", value: "openid email profile"),
-            // We send the SHA-256 hashed nonce per OIDC best practice — the
-            // raw value never leaves the device. Same scheme Apple uses for
-            // Sign-In-with-Apple nonce binding.
             URLQueryItem(name: "nonce", value: hashedNonce),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
             // Force a fresh authorization to surface the account chooser if
             // the user has multiple Google accounts. Without this, Google
             // silently re-uses whichever one is "first" in their cookies.
@@ -167,14 +166,21 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
                     continuation.resume(throwing: error)
                     return
                 }
-                guard let callbackURL,
-                      // ID tokens come back in the URL FRAGMENT (after #) for response_type=id_token.
-                      let fragment = callbackURL.fragment,
-                      let idToken = Self.queryValue(name: "id_token", in: fragment) else {
-                    continuation.resume(throwing: Error.noIDToken)
+                guard let callbackURL else {
+                    continuation.resume(throwing: Error.noAuthorizationCode)
                     return
                 }
-                continuation.resume(returning: idToken)
+                if let query = callbackURL.query,
+                   let returnedError = Self.queryValue(name: "error", in: query) {
+                    continuation.resume(throwing: Error.backend(returnedError))
+                    return
+                }
+                guard let query = callbackURL.query,
+                      let code = Self.queryValue(name: "code", in: query) else {
+                    continuation.resume(throwing: Error.noAuthorizationCode)
+                    return
+                }
+                continuation.resume(returning: code)
             }
             session.presentationContextProvider = self
             // Use an ephemeral session so we don't leak the user's Safari
@@ -192,7 +198,10 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
     // MARK: - Backend exchange
 
     private func exchangeWithBackend(
-        idToken: String,
+        authorizationCode: String,
+        codeVerifier: String,
+        redirectURI: String,
+        nonce: String,
         linkAnonymousUserID: String?,
         linkAnonymousToken: String?
     ) async throws -> GoogleAuthResponse {
@@ -203,7 +212,12 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 15
-        var payload: [String: String] = ["id_token": idToken]
+        var payload: [String: String] = [
+            "authorization_code": authorizationCode,
+            "code_verifier": codeVerifier,
+            "redirect_uri": redirectURI,
+            "nonce": nonce
+        ]
         // Send the prior anonymous credentials so the backend can re-link
         // any meals/profile/body_metrics tied to that anonymous user_id to
         // the new Google identity. The token is proof-of-ownership: without
@@ -271,44 +285,13 @@ final class GoogleSignIn: NSObject, ObservableObject, ASWebAuthenticationPresent
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Decode the unverified payload of a JWS and confirm its `nonce` claim
-    /// equals our expected hashed nonce. Throws `.nonceMismatch` otherwise.
-    /// We do NOT verify the JWS signature here — Google's keys are checked
-    /// server-side at `/api/auth/google` via Google's published JWKS. The
-    /// nonce check is replay defense only, complementary to signature
-    /// verification.
-    private static func verifyNonceClaim(in idToken: String, expectedHashedNonce: String) throws {
-        let parts = idToken.split(separator: ".")
-        guard parts.count >= 2 else { throw Error.nonceMismatch }
-        let payloadSegment = String(parts[1])
-        guard let data = Self.base64URLDecode(payloadSegment),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let nonce = json["nonce"] as? String else {
-            throw Error.nonceMismatch
-        }
-        // Constant-time compare to avoid timing leaks on the nonce value
-        // (low risk since nonces are single-use, but cheap to do right).
-        guard Self.constantTimeEquals(nonce, expectedHashedNonce) else {
-            throw Error.nonceMismatch
-        }
-    }
-
-    private static func base64URLDecode(_ input: String) -> Data? {
-        var s = input
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let padding = (4 - s.count % 4) % 4
-        s.append(String(repeating: "=", count: padding))
-        return Data(base64Encoded: s)
-    }
-
-    private static func constantTimeEquals(_ a: String, _ b: String) -> Bool {
-        let aBytes = Array(a.utf8)
-        let bBytes = Array(b.utf8)
-        if aBytes.count != bBytes.count { return false }
-        var diff: UInt8 = 0
-        for i in 0..<aBytes.count { diff |= aBytes[i] ^ bBytes[i] }
-        return diff == 0
+    private static func sha256Base64URL(_ input: String) -> String {
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return Data(digest)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }
 

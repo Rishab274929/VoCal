@@ -445,6 +445,7 @@ enum CoachVoiceAPI {
         await AuthSession.shared.authorize(&req)
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw Error.badResponse }
+        await MainActor.run { AuthSession.shared.captureMintedSessionIfNeeded(from: http) }
         guard (200..<300).contains(http.statusCode) else {
             throw Error.server(http.statusCode)
         }

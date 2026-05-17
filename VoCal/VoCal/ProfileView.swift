@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 struct ProfileView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -15,6 +16,34 @@ struct ProfileView: View {
     /// Which profile field the user tapped on. Drives the editor sheet;
     /// nil means no sheet is currently showing.
     @State private var editingField: ProfileField?
+
+    /// Controls Apple's native Manage Subscriptions sheet. Driven by the
+    /// "Manage" button on the Pro card. Apple owns the UI; we just present.
+    @State private var showingManageSubscriptions = false
+
+    /// One-shot informational alert used by the settings card. Apple Watch,
+    /// reminders, voice/language, and privacy don't yet have dedicated
+    /// destinations — instead of leaving the rows inert we surface a
+    /// short explanation so the user knows the tap registered and what
+    /// the row will eventually do.
+    @State private var infoAlert: InfoAlert?
+
+    /// Drives the destructive sign-out confirmation. Required for App Store
+    /// guideline 5.1.1(v) — any app with account creation must offer
+    /// sign-out. We default `clearLocalData: true` because the most common
+    /// case is "different person picking up the device".
+    @State private var showingSignOutConfirm = false
+
+    /// Lightweight identifiable wrapper so `.alert(item:)` can render
+    /// different copy per row. Title doubles as the alert ID.
+    private struct InfoAlert: Identifiable {
+        let id: String
+        let title: String
+        let message: String
+        /// Optional Settings deep-link (used for Apple Health). When set,
+        /// the alert exposes an "Open Settings" button alongside OK.
+        let openSettings: Bool
+    }
 
     /// Identifies the four editable profile attributes shown in the
     /// stats / profile rows. Each maps to a small sheet variant.
@@ -44,6 +73,7 @@ struct ProfileView: View {
                 statsRow
                 personalCard
                 settingsCard
+                accountCard
                 aboutFooter
                 Color.clear.frame(height: 24)
             }
@@ -56,6 +86,36 @@ struct ProfileView: View {
                 .presentationDetents([.fraction(0.4), .medium])
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Sign out of VoCal?",
+            isPresented: $showingSignOutConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Sign Out", role: .destructive) {
+                AuthSession.shared.signOut(clearLocalData: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears your session, today's totals, and your locally cached meals on this device. Your account on our servers is preserved \u{2014} sign back in to restore.")
+        }
+        .alert(item: $infoAlert) { info in
+            if info.openSettings, let url = URL(string: UIApplication.openSettingsURLString) {
+                return Alert(
+                    title: Text(info.title),
+                    message: Text(info.message),
+                    primaryButton: .default(Text("Open Settings")) {
+                        UIApplication.shared.open(url)
+                    },
+                    secondaryButton: .cancel(Text("OK"))
+                )
+            } else {
+                return Alert(
+                    title: Text(info.title),
+                    message: Text(info.message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
         }
     }
 
@@ -155,7 +215,12 @@ struct ProfileView: View {
                     .foregroundStyle(Theme.Palette.smoke)
             }
             Spacer()
-            Button("Manage") { /* RC manage */ }
+            // Opens Apple's native Manage Subscriptions sheet. Works in
+            // StoreKit Testing (when a config is enabled on the scheme),
+            // in TestFlight, and in production. The SwiftUI modifier
+            // `.manageSubscriptionsSheet` resolves the right window scene
+            // automatically — no UIWindowScene plumbing needed on our side.
+            Button("Manage") { showingManageSubscriptions = true }
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.Palette.voltage)
         }
@@ -168,6 +233,7 @@ struct ProfileView: View {
                         .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
                 )
         )
+        .manageSubscriptionsSheet(isPresented: $showingManageSubscriptions)
     }
 
     private var statsRow: some View {
@@ -264,15 +330,50 @@ struct ProfileView: View {
 
     private var settingsCard: some View {
         VStack(spacing: 0) {
-            settingRow(icon: "heart.text.square.fill", title: "Apple Health", detail: "Connect", tint: Theme.Palette.pulse)
+            settingRow(
+                icon: "heart.text.square.fill",
+                title: "Apple Health",
+                detail: VoCalHealth.shared.isAuthorizedRequested ? "Connected" : "Connect",
+                tint: Theme.Palette.pulse
+            ) {
+                handleAppleHealthTap()
+            }
             divider
-            settingRow(icon: "applewatch", title: "Apple Watch", detail: "Connect", tint: Theme.Palette.fat)
+            settingRow(icon: "applewatch", title: "Apple Watch", detail: "Coming soon", tint: Theme.Palette.fat) {
+                infoAlert = InfoAlert(
+                    id: "watch",
+                    title: "Apple Watch",
+                    message: "The VoCal Watch companion app is on the roadmap. For now, ask Siri (\u{201C}Hey Siri, log a meal\u{201D}) from your Watch and we'll sync the entry to your iPhone.",
+                    openSettings: false
+                )
+            }
             divider
-            settingRow(icon: "bell.fill", title: "Reminders", detail: "3× daily", tint: Theme.Palette.carbs)
+            settingRow(icon: "bell.fill", title: "Reminders", detail: "3\u{00D7} daily", tint: Theme.Palette.carbs) {
+                infoAlert = InfoAlert(
+                    id: "reminders",
+                    title: "Reminders",
+                    message: "Adjust meal-log reminder times from iOS Settings \u{2192} Notifications \u{2192} VoCal.",
+                    openSettings: true
+                )
+            }
             divider
-            settingRow(icon: "waveform", title: "Voice & language", detail: "English (US)", tint: Theme.Palette.voltage)
+            settingRow(icon: "waveform", title: "Voice & language", detail: "English (US)", tint: Theme.Palette.voltage) {
+                infoAlert = InfoAlert(
+                    id: "voice",
+                    title: "Voice & language",
+                    message: "VoCal uses your device speech-recognition language. Change Siri & Dictation languages from iOS Settings to switch.",
+                    openSettings: true
+                )
+            }
             divider
-            settingRow(icon: "lock.fill", title: "Privacy", detail: "On-device by default", tint: Theme.Palette.bone)
+            settingRow(icon: "lock.fill", title: "Privacy", detail: "On-device by default", tint: Theme.Palette.bone) {
+                infoAlert = InfoAlert(
+                    id: "privacy",
+                    title: "Privacy",
+                    message: "Voice transcripts and photos are processed on-device whenever possible. Network calls (recipe parsing, AI coach) only send the minimum needed and never raw audio.",
+                    openSettings: false
+                )
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
@@ -284,32 +385,95 @@ struct ProfileView: View {
         )
     }
 
+    /// Single-row destructive card: sign out. Kept visually separate from
+    /// the rest of the settings card so it's harder to fat-finger and so
+    /// the destructive intent reads at a glance. App Store guideline
+    /// 5.1.1(v) requires this for any app offering account creation.
+    private var accountCard: some View {
+        VStack(spacing: 0) {
+            Button {
+                showingSignOutConfirm = true
+            } label: {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(Color.red.opacity(0.14))
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.red)
+                    }
+                    .frame(width: 32, height: 32)
+                    Text("Sign Out")
+                        .font(Theme.Font.bodyBold)
+                        .foregroundStyle(Color.red)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                .fill(Theme.Palette.inkSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                        .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
+                )
+        )
+    }
+
+    /// Re-request HealthKit authorization on tap. Apple won't re-prompt once
+    /// the user has already responded, so we additionally offer Settings →
+    /// Health → Data Access & Devices → VoCal to flip per-category access
+    /// manually. Write-auth status is intentionally hidden by Apple, so the
+    /// row label is a best-effort indicator (true once we've asked).
+    private func handleAppleHealthTap() {
+        Task {
+            let ok = await VoCalHealth.shared.requestAuthorization()
+            await MainActor.run {
+                infoAlert = InfoAlert(
+                    id: "health",
+                    title: "Apple Health",
+                    message: ok
+                        ? "VoCal is set up to read steps + active energy and write calories, macros, weight, and body-fat. Adjust per-category permissions in Settings \u{2192} Health \u{2192} Data Access & Devices \u{2192} VoCal."
+                        : "Apple Health is unavailable on this device, or the entitlement is missing. You can still log meals \u{2014} they just won't mirror to Apple Health.",
+                    openSettings: ok
+                )
+            }
+        }
+    }
+
     private var divider: some View {
         Rectangle().fill(Theme.Palette.hairline).frame(height: 1).padding(.leading, 56)
     }
 
-    private func settingRow(icon: String, title: String, detail: String, tint: Color) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(tint.opacity(0.14))
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(tint)
+    private func settingRow(icon: String, title: String, detail: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(tint.opacity(0.14))
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+                .frame(width: 30, height: 30)
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.Palette.bone)
+                Spacer()
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Palette.smoke)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.smoke)
             }
-            .frame(width: 30, height: 30)
-            Text(title)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Theme.Palette.bone)
-            Spacer()
-            Text(detail)
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.Palette.smoke)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.Palette.smoke)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .buttonStyle(.plain)
     }
 
     private var aboutFooter: some View {

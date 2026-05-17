@@ -11,6 +11,11 @@ import SwiftUI
 struct ProgressScreen: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showingBFCapture = false
+    /// Drives the plain-weight entry sheet that lives on the weight card
+    /// — "Log weight" tap target. Separate from the body-fat photo flow
+    /// because users who just want to enter a number shouldn't have to
+    /// run the two-photo capture.
+    @State private var showingWeightEntry = false
     /// Meal currently being edited via `MealEditSheet`. Bound to a sheet
     /// presentation that pops when this becomes non-nil.
     @State private var editingMeal: MealEntry?
@@ -37,6 +42,12 @@ struct ProgressScreen: View {
         .sheet(isPresented: $showingBFCapture) {
             BodyFatPhotoSheet()
                 .presentationDetents([.large])
+                .presentationBackground(Theme.Palette.ink)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingWeightEntry) {
+            WeightEntrySheet()
+                .presentationDetents([.medium, .large])
                 .presentationBackground(Theme.Palette.ink)
                 .presentationDragIndicator(.visible)
         }
@@ -216,19 +227,36 @@ struct ProgressScreen: View {
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("WEIGHT")
-                        .eyebrow()
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(String(format: "%.1f", current))
-                            .font(Theme.Font.serif(32, weight: .medium))
-                            .foregroundStyle(Theme.Palette.bone)
-                            .monospacedDigit()
-                        Text("lb")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.Palette.smoke)
+                // Big weight number — also a tap target. Wrapping the
+                // hero in a Button keeps the visual identical but lets
+                // the user log a fresh measurement without hunting for a
+                // separate affordance. The dedicated "Log" button stays
+                // for users who'd never expect a number to be tappable.
+                Button {
+                    showingWeightEntry = true
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("WEIGHT")
+                            .eyebrow()
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(String(format: "%.1f", current))
+                                .font(Theme.Font.serif(32, weight: .medium))
+                                .foregroundStyle(Theme.Palette.bone)
+                                .monospacedDigit()
+                            Text("lb")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.Palette.smoke)
+                            Image(systemName: "pencil")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.Palette.smoke)
+                                .padding(.leading, 4)
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Current weight \(String(format: "%.1f", current)) pounds — tap to log a new measurement")
+
                 Spacer()
                 // Suppress the delta when there's no history — "+0.0 lb vs
                 // 4 weeks ago" is misleading for a brand-new install.
@@ -259,6 +287,25 @@ struct ProgressScreen: View {
                     .frame(height: 1)
                     .padding(.vertical, 40)
             }
+            // Dedicated "Log weight" CTA. Matches the BF card's "Retake"
+            // affordance visually so the cards rhyme. Tap → weight-entry
+            // sheet → AppModel.addBodyMetric → chart auto-reloads via the
+            // bodyMetrics @Published change.
+            Button {
+                showingWeightEntry = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Log weight")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(Theme.Palette.voltage)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Capsule().strokeBorder(Theme.Palette.voltage, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
         }
         .padding(20)
         .background(

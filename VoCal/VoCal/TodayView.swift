@@ -12,8 +12,10 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var showingVoice: Bool
-    @Binding var showingPhoto: Bool
-    @Binding var showingBarcode: Bool
+    /// Single binding for the merged camera sheet (continuous barcode +
+    /// shutter). Replaces the previously-separate `showingPhoto` and
+    /// `showingBarcode` flags.
+    @Binding var showingUnifiedCamera: Bool
 
     /// Meal currently being edited via `MealEditSheet`. Bound to a sheet
     /// presentation that pops when this becomes non-nil. We never edit the
@@ -71,22 +73,19 @@ struct TodayView: View {
         HStack(spacing: 10) {
             VoCalWordmark()
             Spacer()
-            Button { showingBarcode = true } label: {
-                Image(systemName: "barcode.viewfinder")
+            // Single camera button — opens the unified barcode+shutter
+            // sheet. Replaces the previously-paired barcode/camera icons
+            // since both intents land in the same surface now.
+            Button { showingUnifiedCamera = true } label: {
+                Image(systemName: "camera.viewfinder")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.Palette.bone)
                     .frame(width: 32, height: 32)
                     .background(Circle().strokeBorder(Theme.Palette.hairlineStrong, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button { showingPhoto = true } label: {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.Palette.bone)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().strokeBorder(Theme.Palette.hairlineStrong, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
+            .accessibilityLabel("Open camera")
+            .accessibilityHint("Continuous barcode scan plus shutter for AI meal parsing")
             StreakBadge(days: appModel.profile.streakDays)
         }
     }
@@ -148,27 +147,57 @@ struct TodayView: View {
     // MARK: ring — editorial centerpiece
 
     private var ringBlock: some View {
-        HStack(alignment: .top, spacing: 20) {
-            CalorieRing(eaten: appModel.totals.caloriesEaten, goal: appModel.totals.calorieGoal, size: 168)
+        // Wrapped in a Button so the entire ring + stat column is a single
+        // accessibility-friendly tap target. Goes straight to the unified
+        // camera so the user can log toward their remaining kcal from the
+        // hero affordance without hunting in the tab bar.
+        //
+        // `.contentShape(Rectangle())` ensures even the gaps inside the
+        // ring counterswipe correctly; `.buttonStyle(.plain)` keeps the
+        // visual design exactly the same as before — no pressed
+        // highlight, no system tint.
+        Button {
+            showingUnifiedCamera = true
+        } label: {
+            HStack(alignment: .top, spacing: 20) {
+                ZStack {
+                    CalorieRing(eaten: appModel.totals.caloriesEaten, goal: appModel.totals.calorieGoal, size: 168)
+                    // Tiny camera overlay so the tap affordance is
+                    // discoverable — sits at the ring's bottom-right
+                    // corner. Caption underneath the ring spells it out
+                    // for first-time users.
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.Palette.ink)
+                        .padding(6)
+                        .background(Circle().fill(Theme.Palette.paper))
+                        .offset(x: 60, y: 60)
+                        .accessibilityHidden(true)
+                }
 
-            VStack(alignment: .leading, spacing: 14) {
-                statColumn(label: "EATEN", value: appModel.totals.caloriesEaten, tint: Theme.Palette.bone)
-                Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
-                statColumn(label: "GOAL", value: appModel.totals.calorieGoal, tint: Theme.Palette.ash)
-                Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
-                statColumn(label: "REMAINING", value: max(0, appModel.totals.calorieGoal - appModel.totals.caloriesEaten), tint: Theme.Palette.voltage)
+                VStack(alignment: .leading, spacing: 14) {
+                    statColumn(label: "EATEN", value: appModel.totals.caloriesEaten, tint: Theme.Palette.bone)
+                    Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
+                    statColumn(label: "GOAL", value: appModel.totals.calorieGoal, tint: Theme.Palette.ash)
+                    Rectangle().fill(Theme.Palette.hairline).frame(height: 1)
+                    statColumn(label: "REMAINING", value: max(0, appModel.totals.calorieGoal - appModel.totals.caloriesEaten), tint: Theme.Palette.voltage)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous)
+                    .fill(Theme.Palette.inkSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous)
+                            .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
+                    )
+            )
+            .contentShape(Rectangle())
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous)
-                .fill(Theme.Palette.inkSurface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous)
-                        .strokeBorder(Theme.Palette.hairline, lineWidth: 1)
-                )
-        )
+        .buttonStyle(.plain)
+        .accessibilityLabel("Calorie ring — tap to log a meal with the camera")
+        .accessibilityHint("Opens the unified camera for barcode scanning or photo capture")
     }
 
     private func statColumn(label: String, value: Int, tint: Color) -> some View {
@@ -247,6 +276,7 @@ struct TodayView: View {
 
     // MARK: micros — collapsible totals for the day
 
+    @ViewBuilder
     private var microsBlock: some View {
         // Sum across today's meals for each micronutrient. If a meal didn't
         // report a given micro it just doesn't contribute — no "0" pollution.
@@ -382,9 +412,8 @@ private struct MicroRow: View {
 
 #Preview {
     @Previewable @State var showing = false
-    @Previewable @State var photo = false
-    @Previewable @State var barcode = false
-    return TodayView(showingVoice: $showing, showingPhoto: $photo, showingBarcode: $barcode)
+    @Previewable @State var camera = false
+    return TodayView(showingVoice: $showing, showingUnifiedCamera: $camera)
         .environmentObject(AppModel(
             totals: MockData.today,
             meals: MockData.recentMeals,

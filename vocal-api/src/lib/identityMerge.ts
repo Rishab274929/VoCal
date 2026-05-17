@@ -1,9 +1,9 @@
 // Anonymous → authed data merge.
 //
-// When a user signs up with Google or Apple after using the app
-// anonymously, we want their previously-logged meals + body metrics
-// to follow them to the new identity. This is the "save my data when
-// I sign up" guarantee.
+// When a user signs up with Google or Apple after using the app anonymously,
+// we want their previously-logged meals, body metrics, coach history, and Pro
+// entitlement row to follow them to the new identity. This is the "save my
+// data when I sign up" guarantee.
 //
 // Safety posture:
 //   - Verify the anon token via the auth helper. Without that an attacker
@@ -93,10 +93,34 @@ export async function mergeAnonymousData(
   const errors: string[] = [];
   let merged = 0;
   try {
+    const now = Date.now();
     const statements = [
       env.DB.prepare(`UPDATE meals SET user_id = ?1 WHERE user_id = ?2`).bind(newUserId, anonUserId),
       env.DB.prepare(`UPDATE body_metrics SET user_id = ?1 WHERE user_id = ?2`).bind(newUserId, anonUserId),
       env.DB.prepare(`UPDATE coach_messages SET user_id = ?1 WHERE user_id = ?2`).bind(newUserId, anonUserId),
+      // If both identities somehow have an entitlement row, prefer the active
+      // anonymous purchase before moving it. This preserves a paid purchase
+      // made before account upgrade without letting an expired anon row clobber
+      // an existing signed-in row.
+      env.DB.prepare(
+        `DELETE FROM user_entitlements
+         WHERE user_id = ?1
+           AND EXISTS (
+             SELECT 1 FROM user_entitlements
+             WHERE user_id = ?2
+               AND is_pro = 1
+               AND (expires_at IS NULL OR expires_at > ?3)
+           )`
+      ).bind(newUserId, anonUserId, now),
+      env.DB.prepare(
+        `UPDATE user_entitlements
+         SET user_id = ?1, updated_at = ?3
+         WHERE user_id = ?2
+           AND NOT EXISTS (
+             SELECT 1 FROM user_entitlements existing
+             WHERE existing.user_id = ?1
+           )`
+      ).bind(newUserId, anonUserId, now),
       // Only delete if the row still looks anonymous (id prefix). Avoids the
       // pathological case where the anon id was somehow promoted to a real
       // account between sign-in attempts.
