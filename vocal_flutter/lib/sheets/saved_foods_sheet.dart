@@ -18,7 +18,6 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/app_model.dart';
 import '../theme/theme.dart';
-import '../widgets/components.dart';
 
 Future<void> showSavedFoodsSheet(BuildContext context) {
   return showModalBottomSheet(
