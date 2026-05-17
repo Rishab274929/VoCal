@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Widget metadata. Targets both small (2x2) and medium (4x2) cells via
+  minWidth/minHeight and resizeMode="horizontal|vertical" so the launcher
+  lets the user pick either footprint. Push-only updates — we don't set
+  updatePeriodMillis (the AlarmManager-backed periodic refresh has a 30
+  min floor and we push from Flutter on every meal mutation anyway).
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:maxResizeWidth="270dp"
+    android:maxResizeHeight="160dp"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:initialLayout="@layout/vocal_widget"
+    android:previewLayout="@layout/vocal_widget"
+    android:description="@string/widget_description" />

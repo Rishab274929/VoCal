@@ -67,9 +67,31 @@ class WidgetBridge {
     }
   }
 
+  /// Start the live-activity foreground notification on Android (iOS
+  /// Live Activity / Dynamic Island equivalent). Pins an ongoing
+  /// notification with today's macros until [stopSession] is called.
+  /// Requires POST_NOTIFICATIONS permission on API 33+; the call
+  /// silently no-ops if the user has denied notifications.
+  static Future<void> startSession() async {
+    try {
+      await _channel.invokeMethod<void>('startVocalSessionService');
+    } on PlatformException catch (_) {
+    } on MissingPluginException catch (_) {}
+  }
+
+  /// Dismiss the live-activity notification. Safe to call when it
+  /// isn't running.
+  static Future<void> stopSession() async {
+    try {
+      await _channel.invokeMethod<void>('stopVocalSessionService');
+    } on PlatformException catch (_) {
+    } on MissingPluginException catch (_) {}
+  }
+
   /// Clear the snapshot on sign-out so the widget doesn't show the
   /// previous user's totals until the next mutation. Matches the iOS
-  /// AuthSession.signOut() clean-up.
+  /// AuthSession.signOut() clean-up. Also stops the live-activity
+  /// notification so the prior user's totals don't linger in the shade.
   static Future<void> clear() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -79,5 +101,6 @@ class WidgetBridge {
       await _channel.invokeMethod<void>('reloadWidget');
     } on PlatformException catch (_) {
     } on MissingPluginException catch (_) {}
+    await stopSession();
   }
 }
