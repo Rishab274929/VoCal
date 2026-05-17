@@ -272,6 +272,24 @@ struct PaywallSheet: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.Palette.smoke)
                 }
+                if DevBypass.enabled {
+                    Text("·").font(.system(size: 10)).foregroundStyle(Theme.Palette.smoke)
+                    Button("Skip · demo") {
+                        // Local Pro grant — no StoreKit, no backend. Mirrors the
+                        // onSubscribe / restore path: bump entitlement, persist,
+                        // then dismiss (or forward onSubscribe so callers like
+                        // OnboardingFlow advance through finish()).
+                        appModel.profile.entitlement = .pro
+                        appModel.persist()
+                        if let cb = onSubscribe {
+                            cb()
+                        } else {
+                            dismiss()
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Palette.smoke)
+                }
             }
         }
         .task {

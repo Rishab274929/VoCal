@@ -136,7 +136,39 @@ struct OnboardingFlow: View {
 
             googleSignInRow
                 .padding(.top, 4)
+
+            if DevBypass.enabled {
+                skipOnboardingRow
+                    .padding(.top, 18)
+            }
         }
+    }
+
+    /// Demo-mode escape hatch. Skips the rest of onboarding + the paywall
+    /// by writing `DevBypass.defaultProfile()` (entitlement .pro) and
+    /// completing onboarding atomically. Gated behind `DevBypass.enabled`.
+    @ViewBuilder
+    private var skipOnboardingRow: some View {
+        Button {
+            skipOnboarding()
+        } label: {
+            HStack(spacing: 6) {
+                Text("›")
+                Text("Skip onboarding · demo mode")
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.Palette.smoke)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func skipOnboarding() {
+        var profile = DevBypass.defaultProfile()
+        // Preserve any name the user already typed.
+        if !name.isEmpty { profile.displayName = name }
+        UserDefaults.standard.set(true, forKey: "vocal.didShowFirstPaywall")
+        appModel.completeOnboarding(profile: profile, calorieGoal: DevBypass.defaultCalorieGoal)
     }
 
     /// Sign-in row state. Shared between the Apple + Google flows so we can
